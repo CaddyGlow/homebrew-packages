@@ -28,6 +28,14 @@ scoop install <tool-name>
 scoop update && scoop update <tool-name>
 ```
 
+## Repository Structure
+
+```
+homebrew-packages/
+├── Formula/           # Homebrew formulas (macOS/Linux)
+└── scoop/            # Scoop manifests (Windows)
+```
+
 ## Available Tools
 
 Tools will be listed here as they are added to this repository.

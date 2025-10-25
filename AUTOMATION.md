@@ -31,7 +31,7 @@ The workflow in `.github/workflows/update-package.yml`:
 1. Downloads release artifacts
 2. Calculates SHA256 hashes
 3. Updates `Formula/{tool}.rb` (Homebrew)
-4. Updates `bucket/{tool}.json` (Scoop)
+4. Updates `scoop/{tool}.json` (Scoop)
 5. Commits and pushes changes
 
 ### 3. Users Get Updates
