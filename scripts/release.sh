@@ -208,13 +208,14 @@ check_working_tree() {
             # Other files modified
             echo "What would you like to do?"
             echo "  1) Stage all and commit (git add -A && git commit)"
-            echo "  2) Drop to interactive shell"
-            echo "  3) Ignore and continue (NOT RECOMMENDED)"
-            echo "  4) Abort"
+            echo "  2) Stage tracked files only (git add --update . && git cmc)"
+            echo "  3) Drop to interactive shell"
+            echo "  4) Ignore and continue (NOT RECOMMENDED)"
+            echo "  5) Abort"
             echo ""
 
             local choice
-            read -r -p "$(echo -e "${YELLOW}?${NC} Choose [1-4]: ")" choice
+            read -r -p "$(echo -e "${YELLOW}?${NC} Choose [1-5]: ")" choice
 
             case "$choice" in
                 1)
@@ -228,15 +229,32 @@ check_working_tree() {
                     success "Changes committed"
                     ;;
                 2)
+                    # Check if git cmc alias exists
+                    if ! git config --get alias.cmc &>/dev/null; then
+                        warning "git cmc alias not found, using 'git commit' instead"
+                        git add --update .
+                        local commit_msg
+                        read -r -p "$(echo -e "${YELLOW}?${NC} Commit message: ")" commit_msg
+                        if [[ -z "$commit_msg" ]]; then
+                            die "Commit message cannot be empty"
+                        fi
+                        git commit -m "$commit_msg"
+                    else
+                        git add --update .
+                        git cmc
+                    fi
+                    success "Changes committed"
+                    ;;
+                3)
                     warning "Dropping to interactive shell. Type 'exit' when done."
                     bash -i
                     # Re-check after shell exit
                     check_working_tree
                     ;;
-                3)
+                4)
                     warning "Continuing with uncommitted changes (NOT RECOMMENDED)"
                     ;;
-                4|*)
+                5|*)
                     die "Release aborted by user"
                     ;;
             esac
@@ -310,6 +328,31 @@ verify_versions() {
     fi
 
     echo "$cargo_ver"
+}
+
+show_recent_history() {
+    info "Recent commit history:" >&2
+    echo "" >&2
+    cd "$PROJECT_PATH"
+
+    # Show last 10 commits with relative time
+    git log --oneline --decorate --date=relative -10 --color=always 2>/dev/null | sed 's/^/  /' >&2 || true
+    echo "" >&2
+
+    info "Recent tags:" >&2
+    echo "" >&2
+
+    # Show last 10 tags with dates
+    if git tag -l | head -1 &>/dev/null; then
+        git tag -l --sort=-version:refname | head -10 | while read -r tag; do
+            local tag_date
+            tag_date=$(git log -1 --format="%ar" "$tag" 2>/dev/null || echo "unknown")
+            printf "  %-20s %s\n" "$tag" "$tag_date" >&2
+        done
+    else
+        echo "  <no tags yet>" >&2
+    fi
+    echo "" >&2
 }
 
 increment_patch_version() {
@@ -480,6 +523,9 @@ normal_release_flow() {
 
     current_version=$(verify_versions)
 
+    # Show recent history for context
+    show_recent_history
+
     # Determine new version
     if [[ -z "$NEW_VERSION" ]]; then
         new_version=$(increment_patch_version "$current_version")
@@ -517,6 +563,9 @@ force_release_flow() {
     local current_version target_version
 
     current_version=$(verify_versions)
+
+    # Show recent history for context
+    show_recent_history
 
     # Determine target version
     if [[ -z "$NEW_VERSION" ]]; then
