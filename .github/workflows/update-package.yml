@@ -54,49 +54,78 @@ jobs:
 
           echo "Downloading artifacts from https://github.com/$REPO/releases/download/v$VERSION/"
 
+          # Track if we found any artifacts
+          FOUND_COUNT=0
+
           # Download and hash macOS x86_64
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-apple-darwin.tar.gz" || echo "macOS x64 not found"
-          if [ -f "$TOOL-x86_64-apple-darwin.tar.gz" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-apple-darwin.tar.gz"; then
             HASH_MACOS_X64=$(sha256sum "$TOOL-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1)
             echo "HASH_MACOS_X64=$HASH_MACOS_X64" >> $GITHUB_OUTPUT
+            echo "✓ macOS x64: $HASH_MACOS_X64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ macOS x64 not found"
           fi
 
           # Download and hash macOS ARM64
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-apple-darwin.tar.gz" || echo "macOS ARM64 not found"
-          if [ -f "$TOOL-aarch64-apple-darwin.tar.gz" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-apple-darwin.tar.gz"; then
             HASH_MACOS_ARM64=$(sha256sum "$TOOL-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1)
             echo "HASH_MACOS_ARM64=$HASH_MACOS_ARM64" >> $GITHUB_OUTPUT
+            echo "✓ macOS ARM64: $HASH_MACOS_ARM64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ macOS ARM64 not found"
           fi
 
           # Download and hash Linux x86_64
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-gnu.tar.gz" || echo "Linux x64 not found"
-          if [ -f "$TOOL-x86_64-unknown-linux-gnu.tar.gz" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-gnu.tar.gz"; then
             HASH_LINUX_X64=$(sha256sum "$TOOL-x86_64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
             echo "HASH_LINUX_X64=$HASH_LINUX_X64" >> $GITHUB_OUTPUT
+            echo "✓ Linux x64: $HASH_LINUX_X64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux x64 not found"
           fi
 
           # Download and hash Linux ARM64
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-gnu.tar.gz" || echo "Linux ARM64 not found"
-          if [ -f "$TOOL-aarch64-unknown-linux-gnu.tar.gz" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-gnu.tar.gz"; then
             HASH_LINUX_ARM64=$(sha256sum "$TOOL-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
             echo "HASH_LINUX_ARM64=$HASH_LINUX_ARM64" >> $GITHUB_OUTPUT
+            echo "✓ Linux ARM64: $HASH_LINUX_ARM64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux ARM64 not found"
           fi
 
           # Download and hash Windows x64
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-pc-windows-msvc.zip" || echo "Windows x64 not found"
-          if [ -f "$TOOL-x86_64-pc-windows-msvc.zip" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-pc-windows-msvc.zip"; then
             HASH_WIN_X64=$(sha256sum "$TOOL-x86_64-pc-windows-msvc.zip" | cut -d' ' -f1)
             echo "HASH_WIN_X64=$HASH_WIN_X64" >> $GITHUB_OUTPUT
+            echo "✓ Windows x64: $HASH_WIN_X64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Windows x64 not found"
           fi
 
           # Download and hash Windows x86
-          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-i686-pc-windows-msvc.zip" || echo "Windows x86 not found"
-          if [ -f "$TOOL-i686-pc-windows-msvc.zip" ]; then
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-i686-pc-windows-msvc.zip"; then
             HASH_WIN_X86=$(sha256sum "$TOOL-i686-pc-windows-msvc.zip" | cut -d' ' -f1)
             echo "HASH_WIN_X86=$HASH_WIN_X86" >> $GITHUB_OUTPUT
+            echo "✓ Windows x86: $HASH_WIN_X86"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Windows x86 not found"
           fi
 
-          echo "Hashes calculated successfully"
+          # Fail if no artifacts were found
+          if [ $FOUND_COUNT -eq 0 ]; then
+            echo "::error::No release artifacts found at https://github.com/$REPO/releases/download/v$VERSION/"
+            echo "::error::Please verify that the release v$VERSION exists and contains the expected artifacts"
+            exit 1
+          fi
+
+          echo ""
+          echo "Successfully downloaded and hashed $FOUND_COUNT artifact(s)"
 
       - name: Update Homebrew formula
         run: |
