@@ -1,17 +1,17 @@
 {
-    "version": "0.1.1",
-    "description": "Terminal command history recorder and browser with full context capture",
+    "version": "0.1.4",
+    "description": "Tool from CaddyGlow/shelltape",
     "homepage": "https://github.com/CaddyGlow/shelltape",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-x86_64-pc-windows-msvc.zip",
-            "hash": "46c13f80eff6b7e25581dc0b2a1594cc8ed4b1063d582cf64c2f5d0f57414e6a",
+            "url": "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-x86_64-pc-windows-msvc.zip",
+            "hash": "",
             "bin": "shelltape.exe"
         },
         "32bit": {
-            "url": "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-i686-pc-windows-msvc.zip",
-            "hash": "6963cfed605022ff723c2317b32ae3d117f9ac9be61201d36cc50df976bd2a2f",
+            "url": "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-i686-pc-windows-msvc.zip",
+            "hash": "",
             "bin": "shelltape.exe"
         }
     },
@@ -27,13 +27,5 @@
                 "url": "https://github.com/CaddyGlow/shelltape/releases/download/v$version/shelltape-i686-pc-windows-msvc.zip"
             }
         }
-    },
-    "post_install": [
-        "Write-Host 'To start recording your shell commands, initialize shelltape:' -ForegroundColor Yellow",
-        "Write-Host '  For PowerShell: Add to your profile:' -ForegroundColor Cyan",
-        "Write-Host '    Invoke-Expression (& shelltape init powershell | Out-String)' -ForegroundColor White",
-        "Write-Host ''",
-        "Write-Host '  Your PowerShell profile location:' -ForegroundColor Cyan",
-        "Write-Host \"    $PROFILE\" -ForegroundColor White"
-    ]
+    }
 }

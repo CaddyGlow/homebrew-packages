@@ -1,48 +1,31 @@
 class Shelltape < Formula
-  desc "Terminal command history recorder and browser with full context capture"
+  desc "Tool from CaddyGlow/shelltape"
   homepage "https://github.com/CaddyGlow/shelltape"
-  version "0.1.1"
+  version "0.1.4"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-x86_64-apple-darwin.tar.gz"
-      sha256 "9a3fa4a7d5b79d55d5fe2ca3900025881ac4cbd09da015a37fd0aa37cea030b9"
+      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-x86_64-apple-darwin.tar.gz"
+      sha256 "c24202b9c81a43e39c9e02ba4cf976f12d88bfd6743b84ff06a203fd9a27ec92"
     elsif Hardware::CPU.arm?
-      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-aarch64-apple-darwin.tar.gz"
-      sha256 "507de1ba21ce4450d10bb1d63f73a54b6e0cf2b04b0da782abb908e17846c1aa"
+      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-aarch64-apple-darwin.tar.gz"
+      sha256 "f94c650c563f72476766ce9fde2661e7a8bc8b792df4e90d42c1153bff687428"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "359b7bedd7bb009baf350c9707970c6a8bc4d14632c06f345bb1f8a47c9d657c"
+      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "28c11a9d1afa3b69fae80bcddc56eaa5c9cb58510133a25ae03dbfc97d86718c"
     elsif Hardware::CPU.arm?
-      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.1/shelltape-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "fdd7c9ec8f160775efa4f7ecd5ee5cd615aa2b47b928f2900b50ac3518fa32c3"
+      url "https://github.com/CaddyGlow/shelltape/releases/download/v0.1.4/shelltape-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "a6e079fab24e0e37a84420fc340684363151355ae7e7a04761e2e9114f3ae015"
     end
   end
 
   def install
     bin.install "shelltape"
-  end
-
-  def caveats
-    <<~EOS
-      To start recording your shell commands, add shelltape to your shell:
-
-      For Bash, add to ~/.bashrc:
-        eval "$(shelltape init bash)"
-
-      For Zsh, add to ~/.zshrc:
-        eval "$(shelltape init zsh)"
-
-      For Fish, add to ~/.config/fish/config.fish:
-        shelltape init fish | source
-
-      Then restart your shell or source the config file.
-    EOS
   end
 
   test do
