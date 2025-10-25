@@ -1,26 +1,26 @@
 class Ghdl < Formula
-  desc "GitHub download manager - Fast parallel downloads from GitHub releases"
+  desc "Tool from CaddyGlow/ghdl"
   homepage "https://github.com/CaddyGlow/ghdl"
-  version "0.1.1"
+  version "0.1.3"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-x86_64-apple-darwin.tar.gz"
-      sha256 "072b039c82d3fbd1dc6a5d07cf9f08ead8f74c6d6d2ef318f8a2b5a5f7f3a5c1"
+      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.3/ghdl-x86_64-apple-darwin.tar.gz"
+      sha256 "79912061133664aa2ace462580c00423e78b1231c25cec3a4d738fdc3e3a1564"
     elsif Hardware::CPU.arm?
-      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-aarch64-apple-darwin.tar.gz"
-      sha256 "b583f40d689644258a8fc364f90d5c33b35f9898131c1f58a070bce117f6e189"
+      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.3/ghdl-aarch64-apple-darwin.tar.gz"
+      sha256 "510e73839bf5534e733e42b55e83e460d4a683df6083b0e4f5a60db3a4f8fa3c"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "d155a69accb2eab89a91d3d321cff7cb1f1514fa92c3c7458b7cf78e9b44ea25"
+      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.3/ghdl-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "f819890b6231746e85e398ee76abc6ce80442e08858b5eb23f41c5b0114e1c58"
     elsif Hardware::CPU.arm?
-      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "d2f4d249ac9bf036b25c0fceec18b71099a8560218e15d1224327fbb6bcc18fe"
+      url "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.3/ghdl-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "93dbb9a0b467911653299f8052a351660a3539767d0a76cb8a6219285b4576fa"
     end
   end
 
