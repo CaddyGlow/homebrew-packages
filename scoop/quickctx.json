@@ -1,18 +1,18 @@
 {
-    "version": "0.1.2",
+    "version": "0.1.4",
     "description": "Tool from CaddyGlow/quickctx",
     "homepage": "https://github.com/CaddyGlow/quickctx",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-x86_64-pc-windows-msvc.zip",
-            "hash": "0abb850f412bc4d2dd76c4df745254e8cc87150c750bb8923225a26d803fd372",
-            "bin": ["quickctx.exe", "quickctx-analyze.exe"]
+            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx-x86_64-pc-windows-msvc.zip",
+            "hash": "ceade34f4bef55a6420cb9fc19967a72ee08e002a68b5eab322d0202ca72784c",
+            "bin": "quickctx.exe"
         },
         "32bit": {
-            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-i686-pc-windows-msvc.zip",
-            "hash": "79a1c65cd6fce386406503e9d4a166bca9e07d5b59adb8928950c9f9e969bf6c",
-            "bin": ["quickctx.exe", "quickctx-analyze.exe"]
+            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx-i686-pc-windows-msvc.zip",
+            "hash": "e7037b519b8e390dea3f58881af2b084150dc33b716f168139eecd5c6498f95a",
+            "bin": "quickctx.exe"
         }
     },
     "checkver": {
