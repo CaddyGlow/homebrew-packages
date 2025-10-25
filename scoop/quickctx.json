@@ -1,16 +1,16 @@
 {
-    "version": "0.1.1",
-    "description": "A bidirectional file content aggregator and extractor that converts between files and markdown-formatted representations",
+    "version": "0.1.2",
+    "description": "Tool from CaddyGlow/quickctx",
     "homepage": "https://github.com/CaddyGlow/quickctx",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.1/quickctx-x86_64-pc-windows-msvc.zip",
+            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-x86_64-pc-windows-msvc.zip",
             "hash": "",
             "bin": "quickctx.exe"
         },
         "32bit": {
-            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.1/quickctx-i686-pc-windows-msvc.zip",
+            "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-i686-pc-windows-msvc.zip",
             "hash": "",
             "bin": "quickctx.exe"
         }
