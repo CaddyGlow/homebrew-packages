@@ -96,7 +96,7 @@ with:
 
 ### 2. `notify-package-managers.yml` - Package Manager Update Notification
 
-Triggers updates in the homebrew-packages repository when a new release is published.
+Triggers updates in the homebrew-packages repository after CI workflow completes and assets are built.
 
 **Usage:**
 
@@ -105,8 +105,13 @@ Triggers updates in the homebrew-packages repository when a new release is publi
 name: Update Package Managers
 
 on:
-  release:
-    types: [published]
+  # Trigger after CI workflow completes successfully (after assets are built)
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -119,10 +124,15 @@ permissions:
 
 jobs:
   notify:
+    # Only run if CI completed successfully and was triggered by a tag push
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     uses: CaddyGlow/homebrew-packages/.github/workflows/notify-package-managers.yml@main
     with:
       tool_name: my-tool
-      version: ${{ github.event.inputs.version }}
+      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

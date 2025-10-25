@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: ''
+      repository:
+        description: 'Repository name (e.g., CaddyGlow/quickctx). If not specified, uses current repository.'
+        required: false
+        type: string
+        default: ''
     secrets:
       APP_ID:
         description: 'GitHub App ID for authentication'
