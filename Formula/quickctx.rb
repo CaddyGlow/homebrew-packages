@@ -26,6 +26,7 @@ class Quickctx < Formula
 
   def install
     bin.install "quickctx"
+    bin.install "quickctx-analyze"
   end
 
   test do

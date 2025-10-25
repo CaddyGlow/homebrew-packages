@@ -193,7 +193,10 @@ jobs:
           }
 
           $ARCHIVE_NAME = "$PRIMARY_BIN-$TARGET.zip"
-          Compress-Archive -Path "dist/*" -DestinationPath "dist/$ARCHIVE_NAME"
+
+          # Get all items in dist directory for archiving
+          $itemsToCompress = Get-ChildItem -Path dist -File
+          Compress-Archive -Path $itemsToCompress.FullName -DestinationPath "dist/$ARCHIVE_NAME"
 
           Write-Output "Created archive: $ARCHIVE_NAME"
           Get-ChildItem dist

@@ -1,0 +1,31 @@
+{
+    "version": "0.1.1",
+    "description": "GitHub download manager - Fast parallel downloads from GitHub releases",
+    "homepage": "https://github.com/CaddyGlow/ghdl",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-x86_64-pc-windows-msvc.zip",
+            "hash": "b0ab18339e5aac677cf3d9630112a53684d20615b44bb1cc13b09b1af9c06817",
+            "bin": "ghdl.exe"
+        },
+        "32bit": {
+            "url": "https://github.com/CaddyGlow/ghdl/releases/download/v0.1.1/ghdl-i686-pc-windows-msvc.zip",
+            "hash": "d8fcbbec6c94879d03001f2105d1550c145625831fe856927b1c50ac298b7458",
+            "bin": "ghdl.exe"
+        }
+    },
+    "checkver": {
+        "github": "https://github.com/CaddyGlow/ghdl"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/CaddyGlow/ghdl/releases/download/v$version/ghdl-x86_64-pc-windows-msvc.zip"
+            },
+            "32bit": {
+                "url": "https://github.com/CaddyGlow/ghdl/releases/download/v$version/ghdl-i686-pc-windows-msvc.zip"
+            }
+        }
+    }
+}

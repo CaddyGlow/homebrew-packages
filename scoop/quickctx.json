@@ -7,12 +7,12 @@
         "64bit": {
             "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-x86_64-pc-windows-msvc.zip",
             "hash": "0abb850f412bc4d2dd76c4df745254e8cc87150c750bb8923225a26d803fd372",
-            "bin": "quickctx.exe"
+            "bin": ["quickctx.exe", "quickctx-analyze.exe"]
         },
         "32bit": {
             "url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.2/quickctx-i686-pc-windows-msvc.zip",
             "hash": "79a1c65cd6fce386406503e9d4a166bca9e07d5b59adb8928950c9f9e969bf6c",
-            "bin": "quickctx.exe"
+            "bin": ["quickctx.exe", "quickctx-analyze.exe"]
         }
     },
     "checkver": {
