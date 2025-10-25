@@ -11,34 +11,34 @@ on:
         description: 'JSON array of asset paths to include in archives, e.g. ["README.md", "config/**"]'
         required: false
         type: string
-        default: '[]'
+        default: "[]"
       targets:
-        description: 'JSON array of target triples to build. If not specified, uses a comprehensive default set.'
+        description: "JSON array of target triples to build. If not specified, uses a comprehensive default set."
         required: false
         type: string
-        default: ''
+        default: ""
       skip_tests:
-        description: 'Skip running tests'
+        description: "Skip running tests"
         required: false
         type: boolean
         default: false
       test_command:
-        description: 'Custom test command (default: cargo test --all-features)'
+        description: "Custom test command (default: cargo test --all-features)"
         required: false
         type: string
-        default: 'cargo test --all-features'
+        default: "cargo test --all-features"
       clippy_args:
-        description: 'Additional clippy arguments (default: --all-targets --all-features)'
+        description: "Additional clippy arguments (default: --all-targets --all-features)"
         required: false
         type: string
-        default: '--all-targets --all-features'
+        default: "--all-targets --all-features"
       skip_release_on_tags:
-        description: 'Skip automatic release when tags are pushed (useful if you handle releases separately)'
+        description: "Skip automatic release when tags are pushed (useful if you handle releases separately)"
         required: false
         type: boolean
         default: false
       force_release:
-        description: 'Force a release even without a tag (from workflow_dispatch)'
+        description: "Force a release even without a tag (from workflow_dispatch)"
         required: false
         type: boolean
         default: false
@@ -87,7 +87,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.targets != '' && inputs.targets || '[{"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": ""}, {"target": "aarch64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-aarch64-linux-gnu", "linker": "aarch64-linux-gnu-gcc"}, {"target": "armv7-unknown-linux-gnueabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-arm-linux-gnueabihf", "linker": "arm-linux-gnueabihf-gcc"}, {"target": "i686-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-multilib", "linker": "gcc"}, {"target": "x86_64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "musl-tools", "linker": "musl-gcc"}, {"target": "aarch64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true}, {"target": "armv7-unknown-linux-musleabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true}, {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"}, {"target": "x86_64-pc-windows-gnu", "runs_on": "ubuntu-latest", "archive": "zip", "exe_suffix": ".exe", "apt_package": "gcc-mingw-w64-x86-64", "linker": "x86_64-w64-mingw32-gcc"}, {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"}, {"target": "x86_64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""}, {"target": "aarch64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""}, {"target": "aarch64-linux-android", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "aarch64-linux-android"}, {"target": "armv7-linux-androideabi", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "armv7a-linux-androideabi"}]') }}
+        include: >-
+          ${{ fromJson(
+            inputs.targets != '' && inputs.targets || '[
+              {"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": ""},
+              {"target": "aarch64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-aarch64-linux-gnu", "linker": "aarch64-linux-gnu-gcc"},
+              {"target": "armv7-unknown-linux-gnueabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-arm-linux-gnueabihf", "linker": "arm-linux-gnueabihf-gcc"},
+              {"target": "i686-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-multilib", "linker": "gcc"},
+              {"target": "x86_64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "musl-tools", "linker": "musl-gcc"},
+              {"target": "aarch64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true},
+              {"target": "armv7-unknown-linux-musleabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true},
+              {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"},
+              {"target": "x86_64-pc-windows-gnu", "runs_on": "ubuntu-latest", "archive": "zip", "exe_suffix": ".exe", "apt_package": "gcc-mingw-w64-x86-64", "linker": "x86_64-w64-mingw32-gcc"},
+              {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"},
+              {"target": "x86_64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""},
+              {"target": "aarch64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""},
+              {"target": "aarch64-linux-android", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "aarch64-linux-android"},
+              {"target": "armv7-linux-androideabi", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "armv7a-linux-androideabi"}
+            ]'
+          ) }}
     runs-on: ${{ matrix.runs_on }}
     steps:
       - uses: actions/checkout@v4
