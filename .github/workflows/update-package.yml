@@ -1,0 +1,223 @@
+name: Update Package
+
+on:
+  repository_dispatch:
+    types: [update-package]
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version (e.g., 0.1.1)'
+        required: true
+        type: string
+      repository:
+        description: 'Tool repository (e.g., CaddyGlow/quickctx)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Update ${{ github.event.client_payload.tool || github.event.inputs.tool }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          # From repository_dispatch event or manual input
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+          REPO="${{ github.event.client_payload.repository || github.event.inputs.repository }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "REPO=$REPO" >> $GITHUB_OUTPUT
+
+          echo "Updating package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Repository: $REPO"
+
+      - name: Download and hash release artifacts
+        id: hashes
+        run: |
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+          TOOL="${{ steps.info.outputs.TOOL }}"
+
+          echo "Downloading artifacts from https://github.com/$REPO/releases/download/v$VERSION/"
+
+          # Download and hash macOS x86_64
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-apple-darwin.tar.gz" || echo "macOS x64 not found"
+          if [ -f "$TOOL-x86_64-apple-darwin.tar.gz" ]; then
+            HASH_MACOS_X64=$(sha256sum "$TOOL-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1)
+            echo "HASH_MACOS_X64=$HASH_MACOS_X64" >> $GITHUB_OUTPUT
+          fi
+
+          # Download and hash macOS ARM64
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-apple-darwin.tar.gz" || echo "macOS ARM64 not found"
+          if [ -f "$TOOL-aarch64-apple-darwin.tar.gz" ]; then
+            HASH_MACOS_ARM64=$(sha256sum "$TOOL-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1)
+            echo "HASH_MACOS_ARM64=$HASH_MACOS_ARM64" >> $GITHUB_OUTPUT
+          fi
+
+          # Download and hash Linux x86_64
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-gnu.tar.gz" || echo "Linux x64 not found"
+          if [ -f "$TOOL-x86_64-unknown-linux-gnu.tar.gz" ]; then
+            HASH_LINUX_X64=$(sha256sum "$TOOL-x86_64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_X64=$HASH_LINUX_X64" >> $GITHUB_OUTPUT
+          fi
+
+          # Download and hash Linux ARM64
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-gnu.tar.gz" || echo "Linux ARM64 not found"
+          if [ -f "$TOOL-aarch64-unknown-linux-gnu.tar.gz" ]; then
+            HASH_LINUX_ARM64=$(sha256sum "$TOOL-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_ARM64=$HASH_LINUX_ARM64" >> $GITHUB_OUTPUT
+          fi
+
+          # Download and hash Windows x64
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-pc-windows-msvc.zip" || echo "Windows x64 not found"
+          if [ -f "$TOOL-x86_64-pc-windows-msvc.zip" ]; then
+            HASH_WIN_X64=$(sha256sum "$TOOL-x86_64-pc-windows-msvc.zip" | cut -d' ' -f1)
+            echo "HASH_WIN_X64=$HASH_WIN_X64" >> $GITHUB_OUTPUT
+          fi
+
+          # Download and hash Windows x86
+          wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-i686-pc-windows-msvc.zip" || echo "Windows x86 not found"
+          if [ -f "$TOOL-i686-pc-windows-msvc.zip" ]; then
+            HASH_WIN_X86=$(sha256sum "$TOOL-i686-pc-windows-msvc.zip" | cut -d' ' -f1)
+            echo "HASH_WIN_X86=$HASH_WIN_X86" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Hashes calculated successfully"
+
+      - name: Update Homebrew formula
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+
+          # Convert tool name to CamelCase for Ruby class
+          CLASS_NAME=$(echo "$TOOL" | sed -r 's/(^|-)([a-z])/\U\2/g')
+
+          cat > "Formula/$TOOL.rb" << EOF
+          class $CLASS_NAME < Formula
+            desc "Tool from $REPO"
+            homepage "https://github.com/$REPO"
+            version "$VERSION"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.intel?
+                url "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-apple-darwin.tar.gz"
+                sha256 "${{ steps.hashes.outputs.HASH_MACOS_X64 }}"
+              elsif Hardware::CPU.arm?
+                url "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-apple-darwin.tar.gz"
+                sha256 "${{ steps.hashes.outputs.HASH_MACOS_ARM64 }}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${{ steps.hashes.outputs.HASH_LINUX_X64 }}"
+              elsif Hardware::CPU.arm?
+                url "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "${{ steps.hashes.outputs.HASH_LINUX_ARM64 }}"
+              end
+            end
+
+            def install
+              bin.install "$TOOL"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/$TOOL --version")
+            end
+          end
+          EOF
+
+          echo "Updated Formula/$TOOL.rb"
+          cat "Formula/$TOOL.rb"
+
+      - name: Update Scoop manifest
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+
+          cat > "bucket/$TOOL.json" << EOF
+          {
+              "version": "$VERSION",
+              "description": "Tool from $REPO",
+              "homepage": "https://github.com/$REPO",
+              "license": "MIT",
+              "architecture": {
+                  "64bit": {
+                      "url": "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-pc-windows-msvc.zip",
+                      "hash": "${{ steps.hashes.outputs.HASH_WIN_X64 }}",
+                      "bin": "$TOOL.exe"
+                  },
+                  "32bit": {
+                      "url": "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-i686-pc-windows-msvc.zip",
+                      "hash": "${{ steps.hashes.outputs.HASH_WIN_X86 }}",
+                      "bin": "$TOOL.exe"
+                  }
+              },
+              "checkver": {
+                  "github": "https://github.com/$REPO"
+              },
+              "autoupdate": {
+                  "architecture": {
+                      "64bit": {
+                          "url": "https://github.com/$REPO/releases/download/v\$version/$TOOL-x86_64-pc-windows-msvc.zip"
+                      },
+                      "32bit": {
+                          "url": "https://github.com/$REPO/releases/download/v\$version/$TOOL-i686-pc-windows-msvc.zip"
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Updated bucket/$TOOL.json"
+          cat "bucket/$TOOL.json"
+
+      - name: Commit and push
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "Formula/$TOOL.rb" "bucket/$TOOL.json"
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update $TOOL to v$VERSION"
+            git push
+            echo "Changes committed and pushed"
+          fi
+
+      - name: Summary
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          echo "### Update Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Updated files:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`Formula/$TOOL.rb\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`bucket/$TOOL.json\`" >> $GITHUB_STEP_SUMMARY
