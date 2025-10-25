@@ -1,0 +1,274 @@
+name: Reusable Rust CI
+
+on:
+  workflow_call:
+    inputs:
+      binaries:
+        description: 'JSON array of binary names to build, e.g. ["quickctx"] or ["server", "client"]'
+        required: true
+        type: string
+      assets:
+        description: 'JSON array of asset paths to include in archives, e.g. ["README.md", "config/**"]'
+        required: false
+        type: string
+        default: '[]'
+      targets:
+        description: 'JSON array of target triples to build. If not specified, uses a comprehensive default set.'
+        required: false
+        type: string
+        default: ''
+      skip_tests:
+        description: 'Skip running tests'
+        required: false
+        type: boolean
+        default: false
+      test_command:
+        description: 'Custom test command (default: cargo test --all-features)'
+        required: false
+        type: string
+        default: 'cargo test --all-features'
+      clippy_args:
+        description: 'Additional clippy arguments (default: --all-targets --all-features)'
+        required: false
+        type: string
+        default: '--all-targets --all-features'
+      skip_release_on_tags:
+        description: 'Skip automatic release when tags are pushed (useful if you handle releases separately)'
+        required: false
+        type: boolean
+        default: false
+      force_release:
+        description: 'Force a release even without a tag (from workflow_dispatch)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    if: ${{ !inputs.skip_tests }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy ${{ inputs.clippy_args }}
+
+      - name: Run tests
+        run: ${{ inputs.test_command }}
+
+      - name: Quick build validation
+        if: github.ref == 'refs/heads/main'
+        run: cargo build --release
+
+  build:
+    needs: test
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (startsWith(github.ref, 'refs/tags/') || inputs.force_release)
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.targets != '' && inputs.targets ||
+          '[
+            {"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": ""},
+            {"target": "aarch64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-aarch64-linux-gnu", "linker": "aarch64-linux-gnu-gcc"},
+            {"target": "armv7-unknown-linux-gnueabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-arm-linux-gnueabihf", "linker": "arm-linux-gnueabihf-gcc"},
+            {"target": "i686-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-multilib", "linker": "gcc"},
+            {"target": "x86_64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "musl-tools", "linker": "musl-gcc"},
+            {"target": "aarch64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true},
+            {"target": "armv7-unknown-linux-musleabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true},
+            {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"},
+            {"target": "x86_64-pc-windows-gnu", "runs_on": "ubuntu-latest", "archive": "zip", "exe_suffix": ".exe", "apt_package": "gcc-mingw-w64-x86-64", "linker": "x86_64-w64-mingw32-gcc"},
+            {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe"},
+            {"target": "x86_64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""},
+            {"target": "aarch64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""},
+            {"target": "aarch64-linux-android", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "aarch64-linux-android"},
+            {"target": "armv7-linux-androideabi", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "armv7a-linux-androideabi"}
+          ]'
+        ) }}
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross-compilation toolchain
+        if: matrix.apt_package && !matrix.musl && !matrix.android
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt_package }}
+          mkdir -p .cargo
+          cat >> .cargo/config.toml << EOF
+          [target.${{ matrix.target }}]
+          linker = "${{ matrix.linker }}"
+          EOF
+
+      - name: Install cross for musl targets
+        if: matrix.musl
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install Android NDK
+        if: matrix.android
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            ndk;${{ matrix.ndk_version }}
+
+      - name: Configure Android linker
+        if: matrix.android
+        run: |
+          mkdir -p .cargo
+          NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_SDK_ROOT/ndk/${{ matrix.ndk_version }}}"
+          echo "Using Android NDK at $NDK_HOME"
+          cat >> .cargo/config.toml <<EOF
+          [target.${{ matrix.target }}]
+          ar = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          linker = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.android_triple }}${{ matrix.android_api }}-clang"
+          EOF
+          TARGET_ENV=$(echo "${{ matrix.target }}" | tr '-' '_')
+          echo "CC_${TARGET_ENV}=${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.android_triple }}${{ matrix.android_api }}-clang" >> "$GITHUB_ENV"
+          echo "AR_${TARGET_ENV}=${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> "$GITHUB_ENV"
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.musl }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package artifact (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $BINARIES = '${{ inputs.binaries }}' | ConvertFrom-Json
+          $ASSETS = '${{ inputs.assets }}' | ConvertFrom-Json
+          $TARGET = "${{ matrix.target }}"
+          $PRIMARY_BIN = $BINARIES[0]
+
+          New-Item -ItemType Directory -Force -Path dist
+
+          # Copy all binaries
+          foreach ($BIN in $BINARIES) {
+            Copy-Item "target/$TARGET/release/$BIN${{ matrix.exe_suffix }}" "dist/$BIN${{ matrix.exe_suffix }}"
+          }
+
+          # Copy assets if any
+          foreach ($ASSET in $ASSETS) {
+            if (Test-Path $ASSET) {
+              Copy-Item $ASSET -Destination dist -Recurse
+            }
+          }
+
+          $ARCHIVE_NAME = "$PRIMARY_BIN-$TARGET.zip"
+          Compress-Archive -Path "dist/*" -DestinationPath "dist/$ARCHIVE_NAME"
+
+          Write-Output "Created archive: $ARCHIVE_NAME"
+          Get-ChildItem dist
+
+      - name: Package artifact (Unix)
+        if: matrix.archive != 'zip'
+        shell: bash
+        run: |
+          mkdir -p dist
+          BINARIES='${{ inputs.binaries }}'
+          ASSETS='${{ inputs.assets }}'
+          TARGET="${{ matrix.target }}"
+
+          # Parse JSON arrays
+          PRIMARY_BIN=$(echo "$BINARIES" | jq -r '.[0]')
+
+          # Copy all binaries
+          echo "$BINARIES" | jq -r '.[]' | while read -r BIN; do
+            cp "target/$TARGET/release/$BIN${{ matrix.exe_suffix }}" "dist/$BIN${{ matrix.exe_suffix }}"
+          done
+
+          # Copy assets if any
+          if [ "$ASSETS" != "[]" ]; then
+            echo "$ASSETS" | jq -r '.[]' | while read -r ASSET; do
+              if [ -e "$ASSET" ]; then
+                cp -r "$ASSET" dist/
+              fi
+            done
+          fi
+
+          # Create archive
+          cd dist
+          ARCHIVE_NAME="$PRIMARY_BIN-$TARGET.tar.gz"
+          tar czf "$ARCHIVE_NAME" *
+
+          # Move archive up and clean
+          mv "$ARCHIVE_NAME" ..
+          cd ..
+          rm -rf dist/*
+          mv "$ARCHIVE_NAME" dist/
+
+          echo "Created archive: $ARCHIVE_NAME"
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ fromJson(inputs.binaries)[0] }}-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+  release:
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      !inputs.skip_release_on_tags &&
+      (startsWith(github.ref, 'refs/tags/') || inputs.force_release)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
