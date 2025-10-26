@@ -9,20 +9,18 @@ arch="x86_64 aarch64"
 license="MIT"
 options="!check" # No test suite in upstream
 source="
-	ghdl-$pkgver-x86_64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/ghdl-x86_64-unknown-linux-musl.tar.gz
-	ghdl-$pkgver-aarch64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/ghdl-aarch64-unknown-linux-musl.tar.gz
+	$pkgname-$pkgver-x86_64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz
+	$pkgname-$pkgver-aarch64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz
 "
 
 case "$CARCH" in
 	x86_64)
-		_source_arch="x86_64"
-		sha512sums="SKIP
+		sha512sums="34a3d7bbf88379dd19b596e168ef057c08c798a03ba7d4ef9dcc25469d223c817b29f93ef2d90587b63ce12a709d93459d157d105457c39514bc46cd59a38839
 SKIP"
 		;;
 	aarch64)
-		_source_arch="aarch64"
 		sha512sums="SKIP
-SKIP"
+7b5ae456ee75c761aef6160ee375683812db8490962e4802356f6eb362e0ee344fff9962d6f8bad972c0afdc6f3e434a70c113651707ec9c1b0e3c11bd275927"
 		;;
 esac
 
