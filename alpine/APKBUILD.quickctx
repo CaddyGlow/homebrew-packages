@@ -1,7 +1,7 @@
 # Contributor: CaddyGlow <github.com/CaddyGlow>
 # Maintainer: CaddyGlow <github.com/CaddyGlow>
 pkgname=quickctx
-pkgver=0.1.2
+pkgver=0.1.4
 pkgrel=0
 pkgdesc="Tool from CaddyGlow/quickctx"
 url="https://github.com/CaddyGlow/quickctx"
@@ -9,20 +9,18 @@ arch="x86_64 aarch64"
 license="MIT"
 options="!check" # No test suite in upstream
 source="
-	quickctx-$pkgver-x86_64.tar.gz::https://github.com/CaddyGlow/quickctx/releases/download/v$pkgver/quickctx-x86_64-unknown-linux-musl.tar.gz
-	quickctx-$pkgver-aarch64.tar.gz::https://github.com/CaddyGlow/quickctx/releases/download/v$pkgver/quickctx-aarch64-unknown-linux-musl.tar.gz
+	$pkgname-$pkgver-x86_64.tar.gz::https://github.com/CaddyGlow/quickctx/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz
+	$pkgname-$pkgver-aarch64.tar.gz::https://github.com/CaddyGlow/quickctx/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz
 "
 
 case "$CARCH" in
 	x86_64)
-		_source_arch="x86_64"
-		sha512sums="SKIP
+		sha512sums="373b07ee907479f8428c4e2cb6265c7784f213bdb76e3dee72a9e5c2f9f231535ddc8dd985b41b91d199ab3a418b7d0182b370b5a0ab764317639532769bf248
 SKIP"
 		;;
 	aarch64)
-		_source_arch="aarch64"
 		sha512sums="SKIP
-SKIP"
+fc4058136994393e001179791725445b6cffc49fe4ec1e9ce5918b90135093d00c40f57c906d6aae1d301c3d27dc75a100af3146a8e649ca2c45415a09904495"
 		;;
 esac
 
@@ -30,5 +28,4 @@ builddir="$srcdir"
 
 package() {
 	install -Dm755 "$builddir/quickctx" "$pkgdir/usr/bin/quickctx"
-	install -Dm755 "$builddir/quickctx-analyze" "$pkgdir/usr/bin/quickctx-analyze"
 }
