@@ -147,19 +147,15 @@ jobs:
           arch="x86_64 aarch64"
           license="MIT"
           options="!check" # No test suite in upstream
-          source="
-          	\$pkgname-\$pkgver-x86_64.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-x86_64-unknown-linux-musl.tar.gz
-          	\$pkgname-\$pkgver-aarch64.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-aarch64-unknown-linux-musl.tar.gz
-          "
 
           case "\$CARCH" in
           	x86_64)
-          		sha512sums="$HASH_X64
-          SKIP"
+          		source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-x86_64-unknown-linux-musl.tar.gz"
+          		sha512sums="$HASH_X64"
           		;;
           	aarch64)
-          		sha512sums="SKIP
-          $HASH_ARM64"
+          		source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-aarch64-unknown-linux-musl.tar.gz"
+          		sha512sums="$HASH_ARM64"
           		;;
           esac
 
