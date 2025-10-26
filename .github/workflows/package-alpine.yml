@@ -143,8 +143,12 @@ jobs:
                       echo "Downloading $TARBALL_URL to calculate checksum..."
                       curl -fsSL "$TARBALL_URL" -o "/tmp/$TOOL-$TAR_ARCH.tar.gz"
 
-                      CHECKSUM_ONLY="$(sha512sum "/tmp/$TOOL-$TAR_ARCH.tar.gz" | awk '{print $1}')"
-                      echo "SHA512: $CHECKSUM_ONLY"
+                      # compute the raw hash
+                      HASH="$(sha512sum "/tmp/$TOOL-$TAR_ARCH.tar.gz" | awk '{print $1}')"
+                      # local file name you declared in source
+                      LOCAL_NAME="$TOOL-$VERSION.tar.gz"
+                      # format as: "<hash><two-spaces><local-filename>"
+                      CHECKSUM="$HASH  $LOCAL_NAME"
 
                       # We will set the local source filename to match what abuild will expect:
                       # use "$TOOL-$VERSION.tar.gz" locally but point to architecture-specific remote URL.
@@ -166,8 +170,7 @@ jobs:
           license="MIT"
           options="!check"
           source="$LOCAL_NAME::$REMOTE_URL"
-          sha512sums="$CHECKSUM_ONLY"
-
+          sha512sums="$CHECKSUM"
           builddir="\$srcdir"
           EOF
 
