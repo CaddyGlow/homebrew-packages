@@ -115,7 +115,6 @@ jobs:
             mkdir -p ~/build
             cp /workspace/APKBUILD ~/build/APKBUILD
             cd ~/build
-            abuild checksum
             abuild -r
           "
 
