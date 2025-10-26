@@ -241,7 +241,7 @@ jobs:
           echo "Uploading Alpine packages to $REPO release $RELEASE_TAG"
 
           # Authenticate gh using the token
-          echo "$GH_TOKEN" | gh auth login --with-token
+          # echo "$GH_TOKEN" | gh auth login --with-token
 
           # Upload all .apk files to the repo release (clobber existing)
           find packages -name '*.apk' -print0 | xargs -0 -I{} gh release upload "$RELEASE_TAG" "{}" --repo "$REPO" --clobber
