@@ -1,0 +1,110 @@
+name: Rust Build Only (No Tests, No Release)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to checkout and build'
+        required: false
+        type: string
+        default: ''
+      binaries:
+        description: 'JSON array of binary names to build'
+        required: true
+        type: string
+      assets:
+        description: 'JSON array of asset paths to include in archives'
+        required: false
+        type: string
+        default: '[]'
+      target_preset:
+        description: 'Target preset: all, windows, linux, macos, mobile, musl'
+        required: false
+        type: string
+        default: 'all'
+      custom_targets:
+        description: 'Custom JSON array of targets (overrides preset)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          ref: main
+
+      - name: Load target matrix
+        id: targets
+        uses: ./.github/actions/load-target-matrix
+        with:
+          preset: ${{ inputs.target_preset }}
+          custom_targets: ${{ inputs.custom_targets }}
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Checkout homebrew-packages for composite actions
+        uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          ref: main
+          path: .homebrew-packages
+
+      - name: Setup Rust target
+        uses: ./.homebrew-packages/.github/actions/setup-rust-target
+        with:
+          target: ${{ matrix.target }}
+          apt_package: ${{ matrix.apt_package || '' }}
+          linker: ${{ matrix.linker || '' }}
+          musl: ${{ matrix.musl || 'false' }}
+          android: ${{ matrix.android || 'false' }}
+          ndk_version: ${{ matrix.ndk_version || '' }}
+          android_api: ${{ matrix.android_api || '' }}
+          android_triple: ${{ matrix.android_triple || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.musl }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package binary
+        uses: ./.homebrew-packages/.github/actions/package-rust-binary
+        with:
+          binaries: ${{ inputs.binaries }}
+          assets: ${{ inputs.assets }}
+          target: ${{ matrix.target }}
+          archive_format: ${{ matrix.archive }}
+          exe_suffix: ${{ matrix.exe_suffix || '' }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ fromJson(inputs.binaries)[0] }}-${{ matrix.target }}
+          path: dist/*
