@@ -294,6 +294,22 @@ jobs:
 
           echo "Alpine package build workflow triggered"
 
+      - name: Trigger Termux package build
+        if: steps.termux_hashes.outputs.TERMUX_FOUND != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          echo "Triggering Termux package build workflow..."
+
+          gh workflow run build-termux-packages.yml \
+            -f tool="$TOOL" \
+            -f version="$VERSION"
+
+          echo "Termux package build workflow triggered"
+
       - name: Summary
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
@@ -315,7 +331,7 @@ jobs:
           fi
 
           if [ "$TERMUX_FOUND" != "0" ]; then
-            echo "- ✅ Termux: \`termux/build.sh.$TOOL\`" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Termux: \`termux/build.sh.$TOOL\` (build triggered)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ Termux: Skipped (no Android artifacts found)" >> $GITHUB_STEP_SUMMARY
           fi

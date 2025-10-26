@@ -1,0 +1,256 @@
+name: Build Termux Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version (e.g., 0.1.4)'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [build-termux]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: "termux-build"
+  cancel-in-progress: false
+
+jobs:
+  build-termux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          echo "Building Termux package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Architecture: aarch64"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Termux package in Docker
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          # Create build script
+          cat > termux-build.sh << 'BUILDSCRIPT'
+          #!/bin/bash
+          set -e
+
+          TOOL=$1
+          VERSION=$2
+
+          echo "Building Termux package for $TOOL v$VERSION"
+
+          # Install build dependencies
+          apt-get update
+          apt-get install -y wget git build-essential tar
+
+          # Clone termux-packages repo
+          git clone --depth=1 https://github.com/termux/termux-packages.git
+          cd termux-packages
+
+          # Create package directory
+          mkdir -p packages/$TOOL
+
+          # Copy build.sh from our repo
+          cp /workspace/termux/build.sh.$TOOL packages/$TOOL/build.sh
+
+          # Build the package
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 $TOOL
+
+          # Copy built packages to output
+          mkdir -p /output
+          find . -name "${TOOL}_*.deb" -exec cp {} /output/ \;
+
+          # List what we built
+          ls -lh /output/
+          BUILDSCRIPT
+
+          chmod +x termux-build.sh
+
+          # Create output directory
+          mkdir -p output-termux
+
+          # Note: Termux packages are .deb files, not .apk
+          # Building Termux packages requires the full termux-packages build system
+          # For now, we'll create a simple wrapper that downloads the pre-built binary
+
+          # Create a simplified Termux .deb package
+          cat > create-termux-deb.sh << 'DEBSCRIPT'
+          #!/bin/bash
+          set -e
+
+          TOOL=$1
+          VERSION=$2
+
+          echo "Creating Termux package for $TOOL v$VERSION"
+
+          # Get package info from build.sh
+          source /workspace/termux/build.sh.$TOOL
+
+          # Create package structure
+          PKGDIR="termux-${TOOL}_${VERSION}"
+          mkdir -p "$PKGDIR/data/data/com.termux/files/usr/bin"
+          mkdir -p "$PKGDIR/DEBIAN"
+
+          # Download the binary
+          wget -O "$PKGDIR/data/data/com.termux/files/usr/bin/$TOOL" \
+            "${TERMUX_PKG_SRCURL}"
+
+          # Extract if it's a tarball
+          if [[ "${TERMUX_PKG_SRCURL}" == *.tar.gz ]]; then
+            cd "$PKGDIR/data/data/com.termux/files/usr/bin"
+            tar -xzf "$TOOL"
+            rm "$TOOL"
+            cd /workspace
+          fi
+
+          # Make binaries executable
+          chmod 755 "$PKGDIR/data/data/com.termux/files/usr/bin"/*
+
+          # Create control file
+          cat > "$PKGDIR/DEBIAN/control" << EOF
+          Package: $TOOL
+          Version: $VERSION
+          Architecture: aarch64
+          Maintainer: CaddyGlow <caddyglow@pm.me>
+          Description: ${TERMUX_PKG_DESCRIPTION}
+          Homepage: ${TERMUX_PKG_HOMEPAGE}
+          EOF
+
+          # Build the .deb package
+          dpkg-deb --build "$PKGDIR" "/output/${TOOL}_${VERSION}_aarch64.deb"
+
+          echo "Package built: /output/${TOOL}_${VERSION}_aarch64.deb"
+          ls -lh /output/
+          DEBSCRIPT
+
+          chmod +x create-termux-deb.sh
+
+          # Run build in Ubuntu container (Termux packages are Debian-based)
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "$(pwd):/workspace" \
+            -v "$(pwd)/output-termux:/output" \
+            ubuntu:22.04 \
+            bash /workspace/create-termux-deb.sh "$TOOL" "$VERSION"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-${{ steps.info.outputs.TOOL }}
+          path: output-termux/*.deb
+
+  attach-to-release:
+    needs: build-termux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          # Create release tag
+          RELEASE_TAG="termux-packages-v$(date +%Y%m%d)"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: List packages
+        run: |
+          echo "Built packages:"
+          find packages -name '*.deb' -exec ls -lh {} \;
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          # Check if release exists
+          if gh release view "$RELEASE_TAG" 2>/dev/null; then
+            echo "Release $RELEASE_TAG exists, will update it"
+            RELEASE_EXISTS=true
+          else
+            echo "Creating new release $RELEASE_TAG"
+            RELEASE_EXISTS=false
+          fi
+
+          # Create release if it doesn't exist
+          if [ "$RELEASE_EXISTS" = "false" ]; then
+            gh release create "$RELEASE_TAG" \
+              --title "Termux Packages $(date +%Y-%m-%d)" \
+              --notes "Termux packages (Android/ARM64) for CaddyGlow tools.
+
+          ## Installation
+
+          Download the appropriate .deb file:
+
+          \`\`\`bash
+          # Download package
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_aarch64.deb
+
+          # Install
+          apt install ./${TOOL}_${VERSION}_aarch64.deb
+          \`\`\`
+
+          ## Packages Updated
+
+          - $TOOL v$VERSION"
+          fi
+
+          # Upload all .deb files to release
+          find packages -name '*.deb' -exec gh release upload "$RELEASE_TAG" {} --clobber \;
+
+          echo "Packages uploaded to release: $RELEASE_TAG"
+
+      - name: Summary
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          echo "### Termux Packages Built and Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** [$RELEASE_TAG](https://github.com/CaddyGlow/homebrew-packages/releases/tag/$RELEASE_TAG)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# Download and install" >> $GITHUB_STEP_SUMMARY
+          echo "wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_aarch64.deb" >> $GITHUB_STEP_SUMMARY
+          echo "apt install ./${TOOL}_${VERSION}_aarch64.deb" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
