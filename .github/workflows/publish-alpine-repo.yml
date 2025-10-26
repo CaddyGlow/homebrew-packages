@@ -1,0 +1,196 @@
+name: Publish Alpine Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: 'Rebuild all packages (not just changed)'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+    paths:
+      - 'alpine/APKBUILD.*'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "alpine-repo"
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache \
+            alpine-sdk \
+            git \
+            sudo
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup build user
+        run: |
+          adduser -D builder
+          addgroup builder abuild
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Generate signing key
+        run: |
+          su builder -c "abuild-keygen -a -i -n"
+          echo "Public key generated:"
+          ls -la /home/builder/.abuild/
+          cat /home/builder/.abuild/*.rsa.pub
+
+      - name: Build packages
+        run: |
+          su builder -c '
+            cd /github/workspace/alpine
+            mkdir -p ~/packages
+
+            for apkbuild in APKBUILD.*; do
+              tool=$(echo $apkbuild | sed "s/APKBUILD.//")
+              echo "Building $tool..."
+
+              # Create build directory
+              mkdir -p ~/build/$tool
+              cp $apkbuild ~/build/$tool/APKBUILD
+              cd ~/build/$tool
+
+              # Build package
+              abuild checksum
+              abuild -r
+
+              cd /github/workspace/alpine
+            done
+          '
+
+      - name: Create repository structure
+        run: |
+          mkdir -p alpine-repo/x86_64
+          mkdir -p alpine-repo/aarch64
+
+          # Copy built packages
+          if [ -d /home/builder/packages ]; then
+            find /home/builder/packages -name "*.apk" -exec cp {} alpine-repo/x86_64/ \; || true
+          fi
+
+          # Copy public key
+          cp /home/builder/.abuild/*.rsa.pub alpine-repo/caddyglow.rsa.pub
+
+          echo "Packages in repository:"
+          ls -la alpine-repo/x86_64/
+
+      - name: Generate repository index
+        run: |
+          su builder -c '
+            cd /github/workspace/alpine-repo/x86_64
+            apk index -o APKINDEX.tar.gz *.apk || touch APKINDEX.tar.gz
+            abuild-sign -k ~/.abuild/*-*.rsa APKINDEX.tar.gz
+          '
+
+          # Copy index to aarch64 (same packages for now)
+          cp alpine-repo/x86_64/APKINDEX.tar.gz alpine-repo/aarch64/
+
+      - name: Create repository info page
+        run: |
+          cat > alpine-repo/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>CaddyGlow Alpine Repository</title>
+              <style>
+                  body { font-family: system-ui; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+                  pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+                  code { background: #f5f5f5; padding: 0.2rem 0.4rem; border-radius: 3px; }
+              </style>
+          </head>
+          <body>
+              <h1>CaddyGlow Alpine Repository</h1>
+
+              <h2>Installation</h2>
+
+              <h3>1. Add Repository</h3>
+              <pre><code># Download and trust the signing key
+          wget -O /etc/apk/keys/caddyglow.rsa.pub \
+            https://caddyglow.github.io/homebrew-packages/caddyglow.rsa.pub
+
+          # Add repository to sources
+          echo "https://caddyglow.github.io/homebrew-packages/$(uname -m)" \
+            >> /etc/apk/repositories
+
+          # Update package index
+          apk update</code></pre>
+
+              <h3>2. Install Packages</h3>
+              <pre><code># Install any CaddyGlow tool
+          apk add quickctx
+          apk add shelltape
+          apk add ghdl
+
+          # Or install all at once
+          apk add quickctx shelltape ghdl</code></pre>
+
+              <h3>3. Verify Installation</h3>
+              <pre><code>quickctx --version
+          shelltape --version
+          ghdl --version</code></pre>
+
+              <h2>Available Packages</h2>
+              <ul>
+                  <li><a href="https://github.com/CaddyGlow/quickctx">quickctx</a> - Quick context switching</li>
+                  <li><a href="https://github.com/CaddyGlow/shelltape">shelltape</a> - Shell session recording</li>
+                  <li><a href="https://github.com/CaddyGlow/ghdl">ghdl</a> - GitHub download helper</li>
+              </ul>
+
+              <h2>Architecture</h2>
+              <ul>
+                  <li><a href="x86_64/">x86_64</a></li>
+                  <li><a href="aarch64/">aarch64</a></li>
+              </ul>
+
+              <h2>Links</h2>
+              <ul>
+                  <li><a href="https://github.com/CaddyGlow">CaddyGlow GitHub</a></li>
+                  <li><a href="https://github.com/CaddyGlow/homebrew-packages">Package Repository</a></li>
+              </ul>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'alpine-repo'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          echo "### Alpine Repository Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository URL:** https://caddyglow.github.io/homebrew-packages/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "wget -O /etc/apk/keys/caddyglow.rsa.pub \\" >> $GITHUB_STEP_SUMMARY
+          echo "  https://caddyglow.github.io/homebrew-packages/caddyglow.rsa.pub" >> $GITHUB_STEP_SUMMARY
+          echo 'echo "https://caddyglow.github.io/homebrew-packages/$(uname -m)" \' >> $GITHUB_STEP_SUMMARY
+          echo "  >> /etc/apk/repositories" >> $GITHUB_STEP_SUMMARY
+          echo "apk update" >> $GITHUB_STEP_SUMMARY
+          echo "apk add quickctx shelltape ghdl" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
