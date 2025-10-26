@@ -106,8 +106,9 @@ jobs:
           echo "Creating Termux package for $TOOL v$VERSION"
 
           # Install required tools
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq wget tar
+          apt-get install -y -qq wget tar dpkg-dev
 
           # Get package info from build.sh
           source /workspace/termux/build.sh.$TOOL
@@ -117,20 +118,23 @@ jobs:
           mkdir -p "$PKGDIR/data/data/com.termux/files/usr/bin"
           mkdir -p "$PKGDIR/DEBIAN"
 
-          # Download the binary
-          wget -q -O "$PKGDIR/data/data/com.termux/files/usr/bin/$TOOL" \
-            "${TERMUX_PKG_SRCURL}"
-
-          # Extract if it's a tarball
+          # Download and extract the tarball
           if [[ "${TERMUX_PKG_SRCURL}" == *.tar.gz ]]; then
-            cd "$PKGDIR/data/data/com.termux/files/usr/bin"
-            tar -xzf "$TOOL"
-            rm "$TOOL"
-            cd /workspace
+            # Download to temp location
+            wget -q -O /tmp/package.tar.gz "${TERMUX_PKG_SRCURL}"
+
+            # Extract directly to bin directory
+            tar -xzf /tmp/package.tar.gz -C "$PKGDIR/data/data/com.termux/files/usr/bin"
+
+            # Clean up
+            rm /tmp/package.tar.gz
+          else
+            # Download binary directly
+            wget -q -O "$PKGDIR/data/data/com.termux/files/usr/bin/$TOOL" "${TERMUX_PKG_SRCURL}"
           fi
 
           # Make binaries executable
-          chmod 755 "$PKGDIR/data/data/com.termux/files/usr/bin"/*
+          find "$PKGDIR/data/data/com.termux/files/usr/bin" -type f -exec chmod 755 {} \;
 
           # Create control file
           cat > "$PKGDIR/DEBIAN/control" << EOF
