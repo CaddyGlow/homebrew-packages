@@ -115,6 +115,9 @@ jobs:
             mkdir -p ~/build
             cp /workspace/APKBUILD ~/build/APKBUILD
             cd ~/build
+            echo '=== APKBUILD contents ==='
+            cat APKBUILD
+            echo '=== Running abuild ==='
             abuild -r
           "
 
