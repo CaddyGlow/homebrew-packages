@@ -281,6 +281,20 @@ jobs:
             echo "Changes committed and pushed"
           fi
 
+      - name: Trigger Alpine package build
+        if: steps.alpine_hashes.outputs.ALPINE_FOUND != '0'
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          echo "Triggering Alpine package build workflow..."
+
+          gh workflow run publish-alpine-repo.yml \
+            -f tool="$TOOL" \
+            -f version="$VERSION"
+
+          echo "Alpine package build workflow triggered"
+
       - name: Summary
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
@@ -296,7 +310,7 @@ jobs:
           echo "**Generated packages:**" >> $GITHUB_STEP_SUMMARY
 
           if [ "$ALPINE_FOUND" != "0" ]; then
-            echo "- ✅ Alpine Linux: \`alpine/APKBUILD.$TOOL\`" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Alpine Linux: \`alpine/APKBUILD.$TOOL\` (build triggered)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ Alpine Linux: Skipped (no musl artifacts found)" >> $GITHUB_STEP_SUMMARY
           fi

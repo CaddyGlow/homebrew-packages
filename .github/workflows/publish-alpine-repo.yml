@@ -1,196 +1,203 @@
-name: Publish Alpine Repository
+name: Build Alpine Packages
 
 on:
   workflow_dispatch:
     inputs:
-      rebuild_all:
-        description: 'Rebuild all packages (not just changed)'
-        required: false
-        type: boolean
-        default: false
-  push:
-    branches:
-      - main
-    paths:
-      - 'alpine/APKBUILD.*'
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version (e.g., 0.1.4)'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [build-alpine]
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "alpine-repo"
+  group: "alpine-build"
   cancel-in-progress: false
 
 jobs:
-  build-and-publish:
+  build-alpine:
     runs-on: ubuntu-latest
-    container:
-      image: alpine:latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
 
     steps:
-      - name: Install build dependencies
-        run: |
-          apk add --no-cache \
-            alpine-sdk \
-            git \
-            sudo
-
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup build user
+      - name: Get tool info
+        id: info
         run: |
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          echo "Building Alpine package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Architecture: ${{ matrix.arch }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'aarch64'
+
+      - name: Build Alpine package in Docker
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          ARCH="${{ matrix.arch }}"
+
+          # Determine Docker platform
+          if [ "$ARCH" = "aarch64" ]; then
+            PLATFORM="linux/arm64"
+          else
+            PLATFORM="linux/amd64"
+          fi
+
+          # Create build script
+          cat > build.sh << 'BUILDSCRIPT'
+          #!/bin/sh
+          set -e
+
+          # Install dependencies
+          apk add --no-cache alpine-sdk sudo
+
+          # Setup builder user
           adduser -D builder
           addgroup builder abuild
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-      - name: Generate signing key
-        run: |
+          # Generate signing key
           su builder -c "abuild-keygen -a -i -n"
-          echo "Public key generated:"
-          ls -la /home/builder/.abuild/
-          cat /home/builder/.abuild/*.rsa.pub
 
-      - name: Build packages
+          # Build package
+          TOOL=$1
+          su builder -c "
+            mkdir -p ~/build
+            cp /workspace/alpine/APKBUILD.$TOOL ~/build/APKBUILD
+            cd ~/build
+            abuild checksum
+            abuild -r
+          "
+
+          # Copy built package to output
+          mkdir -p /output
+          find /home/builder/packages -name '*.apk' -exec cp {} /output/ \;
+          cp /home/builder/.abuild/*.rsa.pub /output/signing-key.rsa.pub
+          BUILDSCRIPT
+
+          chmod +x build.sh
+
+          # Run build in Alpine container
+          docker run --rm \
+            --platform $PLATFORM \
+            -v "$(pwd):/workspace" \
+            -v "$(pwd)/output-$ARCH:/output" \
+            alpine:latest \
+            /workspace/build.sh "$TOOL"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-${{ matrix.arch }}-${{ steps.info.outputs.TOOL }}
+          path: output-${{ matrix.arch }}/*.apk
+
+  attach-to-release:
+    needs: build-alpine
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
         run: |
-          su builder -c '
-            cd /github/workspace/alpine
-            mkdir -p ~/packages
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
 
-            for apkbuild in APKBUILD.*; do
-              tool=$(echo $apkbuild | sed "s/APKBUILD.//")
-              echo "Building $tool..."
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-              # Create build directory
-              mkdir -p ~/build/$tool
-              cp $apkbuild ~/build/$tool/APKBUILD
-              cd ~/build/$tool
+          # Create release tag
+          RELEASE_TAG="alpine-packages-v$(date +%Y%m%d)"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-              # Build package
-              abuild checksum
-              abuild -r
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
 
-              cd /github/workspace/alpine
-            done
-          '
-
-      - name: Create repository structure
+      - name: List packages
         run: |
-          mkdir -p alpine-repo/x86_64
-          mkdir -p alpine-repo/aarch64
+          echo "Built packages:"
+          find packages -name '*.apk' -exec ls -lh {} \;
 
-          # Copy built packages
-          if [ -d /home/builder/packages ]; then
-            find /home/builder/packages -name "*.apk" -exec cp {} alpine-repo/x86_64/ \; || true
+      - name: Create or update release
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          # Check if release exists
+          if gh release view "$RELEASE_TAG" 2>/dev/null; then
+            echo "Release $RELEASE_TAG exists, will update it"
+            RELEASE_EXISTS=true
+          else
+            echo "Creating new release $RELEASE_TAG"
+            RELEASE_EXISTS=false
           fi
 
-          # Copy public key
-          cp /home/builder/.abuild/*.rsa.pub alpine-repo/caddyglow.rsa.pub
+          # Create release if it doesn't exist
+          if [ "$RELEASE_EXISTS" = "false" ]; then
+            gh release create "$RELEASE_TAG" \
+              --title "Alpine Packages $(date +%Y-%m-%d)" \
+              --notes "Alpine Linux packages for CaddyGlow tools.
 
-          echo "Packages in repository:"
-          ls -la alpine-repo/x86_64/
+          ## Installation
 
-      - name: Generate repository index
-        run: |
-          su builder -c '
-            cd /github/workspace/alpine-repo/x86_64
-            apk index -o APKINDEX.tar.gz *.apk || touch APKINDEX.tar.gz
-            abuild-sign -k ~/.abuild/*-*.rsa APKINDEX.tar.gz
-          '
+          Download the appropriate .apk file for your architecture:
 
-          # Copy index to aarch64 (same packages for now)
-          cp alpine-repo/x86_64/APKINDEX.tar.gz alpine-repo/aarch64/
+          \`\`\`bash
+          # Download package
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/$TOOL-$VERSION-r0.apk
 
-      - name: Create repository info page
-        run: |
-          cat > alpine-repo/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <title>CaddyGlow Alpine Repository</title>
-              <style>
-                  body { font-family: system-ui; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
-                  pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; }
-                  code { background: #f5f5f5; padding: 0.2rem 0.4rem; border-radius: 3px; }
-              </style>
-          </head>
-          <body>
-              <h1>CaddyGlow Alpine Repository</h1>
+          # Install (as root)
+          apk add --allow-untrusted $TOOL-$VERSION-r0.apk
+          \`\`\`
 
-              <h2>Installation</h2>
+          ## Packages Updated
 
-              <h3>1. Add Repository</h3>
-              <pre><code># Download and trust the signing key
-          wget -O /etc/apk/keys/caddyglow.rsa.pub \
-            https://caddyglow.github.io/homebrew-packages/caddyglow.rsa.pub
+          - $TOOL v$VERSION"
+          fi
 
-          # Add repository to sources
-          echo "https://caddyglow.github.io/homebrew-packages/$(uname -m)" \
-            >> /etc/apk/repositories
+          # Upload all .apk files to release
+          find packages -name '*.apk' -exec gh release upload "$RELEASE_TAG" {} --clobber \;
 
-          # Update package index
-          apk update</code></pre>
-
-              <h3>2. Install Packages</h3>
-              <pre><code># Install any CaddyGlow tool
-          apk add quickctx
-          apk add shelltape
-          apk add ghdl
-
-          # Or install all at once
-          apk add quickctx shelltape ghdl</code></pre>
-
-              <h3>3. Verify Installation</h3>
-              <pre><code>quickctx --version
-          shelltape --version
-          ghdl --version</code></pre>
-
-              <h2>Available Packages</h2>
-              <ul>
-                  <li><a href="https://github.com/CaddyGlow/quickctx">quickctx</a> - Quick context switching</li>
-                  <li><a href="https://github.com/CaddyGlow/shelltape">shelltape</a> - Shell session recording</li>
-                  <li><a href="https://github.com/CaddyGlow/ghdl">ghdl</a> - GitHub download helper</li>
-              </ul>
-
-              <h2>Architecture</h2>
-              <ul>
-                  <li><a href="x86_64/">x86_64</a></li>
-                  <li><a href="aarch64/">aarch64</a></li>
-              </ul>
-
-              <h2>Links</h2>
-              <ul>
-                  <li><a href="https://github.com/CaddyGlow">CaddyGlow GitHub</a></li>
-                  <li><a href="https://github.com/CaddyGlow/homebrew-packages">Package Repository</a></li>
-              </ul>
-          </body>
-          </html>
-          EOF
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: 'alpine-repo'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          echo "Packages uploaded to release: $RELEASE_TAG"
 
       - name: Summary
         run: |
-          echo "### Alpine Repository Published" >> $GITHUB_STEP_SUMMARY
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          echo "### Alpine Packages Built and Released" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository URL:** https://caddyglow.github.io/homebrew-packages/" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** [$RELEASE_TAG](https://github.com/CaddyGlow/homebrew-packages/releases/tag/$RELEASE_TAG)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "wget -O /etc/apk/keys/caddyglow.rsa.pub \\" >> $GITHUB_STEP_SUMMARY
-          echo "  https://caddyglow.github.io/homebrew-packages/caddyglow.rsa.pub" >> $GITHUB_STEP_SUMMARY
-          echo 'echo "https://caddyglow.github.io/homebrew-packages/$(uname -m)" \' >> $GITHUB_STEP_SUMMARY
-          echo "  >> /etc/apk/repositories" >> $GITHUB_STEP_SUMMARY
-          echo "apk update" >> $GITHUB_STEP_SUMMARY
-          echo "apk add quickctx shelltape ghdl" >> $GITHUB_STEP_SUMMARY
+          echo "# Download and install" >> $GITHUB_STEP_SUMMARY
+          echo "wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/$TOOL-$VERSION-r0.apk" >> $GITHUB_STEP_SUMMARY
+          echo "apk add --allow-untrusted $TOOL-$VERSION-r0.apk" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
