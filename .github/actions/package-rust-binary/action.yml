@@ -1,0 +1,96 @@
+name: Package Rust Binary
+description: Creates a release archive for a Rust binary (cross-platform)
+
+inputs:
+  binaries:
+    description: 'JSON array of binary names'
+    required: true
+  assets:
+    description: 'JSON array of asset paths to include'
+    required: false
+    default: '[]'
+  target:
+    description: 'Rust target triple'
+    required: true
+  archive_format:
+    description: 'Archive format: tar.gz or zip'
+    required: true
+  exe_suffix:
+    description: 'Executable suffix (.exe for Windows, empty for Unix)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Package (Windows)
+      if: inputs.archive_format == 'zip'
+      shell: pwsh
+      run: |
+        $BINARIES = '${{ inputs.binaries }}' | ConvertFrom-Json
+        $ASSETS = '${{ inputs.assets }}' | ConvertFrom-Json
+        $TARGET = "${{ inputs.target }}"
+        $PRIMARY_BIN = $BINARIES[0]
+
+        New-Item -ItemType Directory -Force -Path dist
+
+        # Copy all binaries
+        foreach ($BIN in $BINARIES) {
+          Copy-Item "target/$TARGET/release/$BIN${{ inputs.exe_suffix }}" "dist/$BIN${{ inputs.exe_suffix }}"
+        }
+
+        # Copy assets if any
+        foreach ($ASSET in $ASSETS) {
+          if (Test-Path $ASSET) {
+            Copy-Item $ASSET -Destination dist -Recurse
+          }
+        }
+
+        $ARCHIVE_NAME = "$PRIMARY_BIN-$TARGET.zip"
+
+        # Get all items in dist directory for archiving
+        $itemsToCompress = Get-ChildItem -Path dist -File
+        Compress-Archive -Path $itemsToCompress.FullName -DestinationPath "dist/$ARCHIVE_NAME"
+
+        Write-Output "Created archive: $ARCHIVE_NAME"
+        Get-ChildItem dist
+
+    - name: Package (Unix)
+      if: inputs.archive_format != 'zip'
+      shell: bash
+      run: |
+        mkdir -p dist
+        BINARIES='${{ inputs.binaries }}'
+        ASSETS='${{ inputs.assets }}'
+        TARGET="${{ inputs.target }}"
+
+        # Parse JSON arrays
+        PRIMARY_BIN=$(echo "$BINARIES" | jq -r '.[0]')
+
+        # Copy all binaries
+        echo "$BINARIES" | jq -r '.[]' | while read -r BIN; do
+          cp "target/$TARGET/release/$BIN${{ inputs.exe_suffix }}" "dist/$BIN${{ inputs.exe_suffix }}"
+        done
+
+        # Copy assets if any
+        if [ "$ASSETS" != "[]" ]; then
+          echo "$ASSETS" | jq -r '.[]' | while read -r ASSET; do
+            if [ -e "$ASSET" ]; then
+              cp -r "$ASSET" dist/
+            fi
+          done
+        fi
+
+        # Create archive
+        cd dist
+        ARCHIVE_NAME="$PRIMARY_BIN-$TARGET.tar.gz"
+        tar czf "$ARCHIVE_NAME" *
+
+        # Move archive up and clean
+        mv "$ARCHIVE_NAME" ..
+        cd ..
+        rm -rf dist/*
+        mv "$ARCHIVE_NAME" dist/
+
+        echo "Created archive: $ARCHIVE_NAME"
+        ls -lh dist/

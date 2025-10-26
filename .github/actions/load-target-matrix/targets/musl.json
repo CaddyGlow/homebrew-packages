@@ -1,0 +1,5 @@
+[
+  {"target": "x86_64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "musl-tools", "linker": "musl-gcc"},
+  {"target": "aarch64-unknown-linux-musl", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true},
+  {"target": "armv7-unknown-linux-musleabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "musl": true}
+]

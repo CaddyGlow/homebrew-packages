@@ -1,0 +1,86 @@
+name: Setup Rust Target
+description: Configures cross-compilation environment for Rust target
+
+inputs:
+  target:
+    description: 'Rust target triple'
+    required: true
+  apt_package:
+    description: 'APT package to install for cross-compilation'
+    required: false
+    default: ''
+  linker:
+    description: 'Linker to use for this target'
+    required: false
+    default: ''
+  musl:
+    description: 'Whether this is a musl target (requires cross)'
+    required: false
+    default: 'false'
+  android:
+    description: 'Whether this is an Android target'
+    required: false
+    default: 'false'
+  ndk_version:
+    description: 'Android NDK version'
+    required: false
+    default: ''
+  android_api:
+    description: 'Android API level'
+    required: false
+    default: ''
+  android_triple:
+    description: 'Android target triple'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        rustup update stable
+        rustup default stable
+        rustup target add ${{ inputs.target }}
+
+    - name: Install cross-compilation toolchain
+      if: inputs.apt_package != '' && inputs.musl == 'false' && inputs.android == 'false'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ${{ inputs.apt_package }}
+        mkdir -p .cargo
+        cat >> .cargo/config.toml << EOF
+        [target.${{ inputs.target }}]
+        linker = "${{ inputs.linker }}"
+        EOF
+
+    - name: Install cross for musl targets
+      if: inputs.musl == 'true'
+      shell: bash
+      run: |
+        cargo install cross --git https://github.com/cross-rs/cross
+
+    - name: Install Android NDK
+      if: inputs.android == 'true'
+      uses: android-actions/setup-android@v3
+      with:
+        packages: |
+          ndk;${{ inputs.ndk_version }}
+
+    - name: Configure Android linker
+      if: inputs.android == 'true'
+      shell: bash
+      run: |
+        mkdir -p .cargo
+        NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk_version }}}"
+        echo "Using Android NDK at $NDK_HOME"
+        cat >> .cargo/config.toml <<EOF
+        [target.${{ inputs.target }}]
+        ar = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+        linker = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ inputs.android_triple }}${{ inputs.android_api }}-clang"
+        EOF
+        TARGET_ENV=$(echo "${{ inputs.target }}" | tr '-' '_')
+        echo "CC_${TARGET_ENV}=${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ inputs.android_triple }}${{ inputs.android_api }}-clang" >> "$GITHUB_ENV"
+        echo "AR_${TARGET_ENV}=${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> "$GITHUB_ENV"

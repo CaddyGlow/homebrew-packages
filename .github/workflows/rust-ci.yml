@@ -1,4 +1,18 @@
-name: Reusable Rust CI
+name: Reusable Rust CI (DEPRECATED)
+
+# DEPRECATED: This workflow is deprecated in favor of the split workflows:
+# - .github/workflows/rust-test.yml - Testing and linting
+# - .github/workflows/rust-build.yml - Multi-platform builds
+# - .github/workflows/rust-release.yml - Release creation
+#
+# Benefits of new workflows:
+# - Better separation of concerns
+# - Reusable composite actions
+# - Target presets (all, windows, linux, macos, mobile, musl)
+# - Cleaner and more maintainable code
+#
+# This workflow is kept for backwards compatibility but will be removed in the future.
+# Please migrate to the new split workflows.
 
 on:
   workflow_call:

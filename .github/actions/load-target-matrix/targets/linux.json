@@ -1,0 +1,6 @@
+[
+  {"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": ""},
+  {"target": "aarch64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-aarch64-linux-gnu", "linker": "aarch64-linux-gnu-gcc"},
+  {"target": "armv7-unknown-linux-gnueabihf", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-arm-linux-gnueabihf", "linker": "arm-linux-gnueabihf-gcc"},
+  {"target": "i686-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "apt_package": "gcc-multilib", "linker": "gcc"}
+]

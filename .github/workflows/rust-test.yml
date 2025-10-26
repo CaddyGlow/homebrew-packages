@@ -1,0 +1,60 @@
+name: Rust Test
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to checkout and test'
+        required: false
+        type: string
+        default: ''
+      test_command:
+        description: 'Custom test command (default: cargo test --all-features)'
+        required: false
+        type: string
+        default: 'cargo test --all-features'
+      clippy_args:
+        description: 'Additional clippy arguments (default: --all-targets --all-features)'
+        required: false
+        type: string
+        default: '--all-targets --all-features'
+      skip_formatting:
+        description: 'Skip formatting check'
+        required: false
+        type: boolean
+        default: false
+      skip_clippy:
+        description: 'Skip clippy check'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        if: ${{ !inputs.skip_formatting }}
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        if: ${{ !inputs.skip_clippy }}
+        run: cargo clippy ${{ inputs.clippy_args }}
+
+      - name: Run tests
+        run: ${{ inputs.test_command }}

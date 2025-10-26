@@ -1,0 +1,4 @@
+[
+  {"target": "aarch64-linux-android", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "aarch64-linux-android"},
+  {"target": "armv7-linux-androideabi", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "android": true, "ndk_version": "26.1.10909125", "android_api": "24", "android_triple": "armv7a-linux-androideabi"}
+]

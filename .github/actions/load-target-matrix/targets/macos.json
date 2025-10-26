@@ -1,0 +1,4 @@
+[
+  {"target": "x86_64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""},
+  {"target": "aarch64-apple-darwin", "runs_on": "macos-latest", "archive": "tar.gz", "exe_suffix": ""}
+]
