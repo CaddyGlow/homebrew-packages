@@ -129,6 +129,13 @@ jobs:
           if [ -f "homebrew-packages/alpine/APKBUILD.$TOOL" ]; then
             cp "homebrew-packages/alpine/APKBUILD.$TOOL" APKBUILD
           else
+            # Download tarball and calculate checksum
+            TARBALL_URL="https://github.com/$REPO/releases/download/v$VERSION/$TOOL-$ARCH-unknown-linux-musl.tar.gz"
+            echo "Downloading $TARBALL_URL to calculate checksum..."
+            curl -fsSL "$TARBALL_URL" -o "/tmp/$TOOL-$ARCH.tar.gz"
+            CHECKSUM=$(sha512sum "/tmp/$TOOL-$ARCH.tar.gz" | awk '{print $1}')
+            echo "SHA512: $CHECKSUM"
+
             # Generate architecture-specific APKBUILD
             cat > APKBUILD << EOF
           # Contributor: CaddyGlow <caddyglow@pm.me>
@@ -142,7 +149,7 @@ jobs:
           license="MIT"
           options="!check"
           source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
-          sha512sums="SKIP"
+          sha512sums="$CHECKSUM"
 
           builddir="\$srcdir"
 
@@ -150,8 +157,7 @@ jobs:
           $(for binary in $BINARIES; do echo "\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\""; done)
           }
           EOF
-            echo "Generated APKBUILD for $ARCH:"
-            cat APKBUILD
+            echo "Generated APKBUILD for $ARCH with checksum"
           fi
 
           # Create output directory
