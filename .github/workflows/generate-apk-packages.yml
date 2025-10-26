@@ -6,15 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       tool:
-        description: 'Tool name (e.g., quickctx)'
+        description: "Tool name (e.g., quickctx)"
         required: true
         type: string
       version:
-        description: 'Version (e.g., 0.1.1)'
+        description: "Version (e.g., 0.1.1)"
         required: true
         type: string
       repository:
-        description: 'Tool repository (e.g., CaddyGlow/quickctx)'
+        description: "Tool repository (e.g., CaddyGlow/quickctx)"
         required: true
         type: string
 
@@ -137,8 +137,8 @@ jobs:
 
           # Generate APKBUILD file
           cat > "alpine/APKBUILD.$TOOL" << EOF
-          # Contributor: CaddyGlow <github.com/CaddyGlow>
-          # Maintainer: CaddyGlow <github.com/CaddyGlow>
+          # Contributor: CaddyGlow <caddyglow@pm.me>
+          # Maintainer: CaddyGlow <caddyglow@pm.me>
           pkgname=$TOOL
           pkgver=$VERSION
           pkgrel=0
