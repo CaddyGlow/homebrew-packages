@@ -1,0 +1,279 @@
+name: Generate APK Packages
+
+on:
+  repository_dispatch:
+    types: [generate-apk]
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version (e.g., 0.1.1)'
+        required: true
+        type: string
+      repository:
+        description: 'Tool repository (e.g., CaddyGlow/quickctx)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate-apk:
+    name: Generate APK packages for ${{ github.event.client_payload.tool || github.event.inputs.tool }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          # From repository_dispatch event or manual input
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+          REPO="${{ github.event.client_payload.repository || github.event.inputs.repository }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "REPO=$REPO" >> $GITHUB_OUTPUT
+
+          echo "Generating APK packages:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Repository: $REPO"
+
+      - name: Download and hash Alpine artifacts
+        id: alpine_hashes
+        run: |
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+          TOOL="${{ steps.info.outputs.TOOL }}"
+
+          echo "Downloading Alpine (musl) artifacts from https://github.com/$REPO/releases/download/v$VERSION/"
+
+          # Track if we found any artifacts
+          FOUND_COUNT=0
+
+          # Download and hash Linux x86_64 musl (for Alpine)
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-musl.tar.gz"; then
+            HASH_LINUX_MUSL_X64=$(sha512sum "$TOOL-x86_64-unknown-linux-musl.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_MUSL_X64=$HASH_LINUX_MUSL_X64" >> $GITHUB_OUTPUT
+            echo "✓ Linux musl x64: $HASH_LINUX_MUSL_X64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux musl x64 not found"
+          fi
+
+          # Download and hash Linux ARM64 musl (for Alpine)
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-musl.tar.gz"; then
+            HASH_LINUX_MUSL_ARM64=$(sha512sum "$TOOL-aarch64-unknown-linux-musl.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_MUSL_ARM64=$HASH_LINUX_MUSL_ARM64" >> $GITHUB_OUTPUT
+            echo "✓ Linux musl ARM64: $HASH_LINUX_MUSL_ARM64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux musl ARM64 not found"
+          fi
+
+          # Warn if no Alpine artifacts were found
+          if [ $FOUND_COUNT -eq 0 ]; then
+            echo "::warning::No Alpine (musl) artifacts found at https://github.com/$REPO/releases/download/v$VERSION/"
+            echo "::warning::Alpine package generation will be skipped"
+          else
+            echo ""
+            echo "Successfully downloaded and hashed $FOUND_COUNT Alpine artifact(s)"
+          fi
+
+          echo "ALPINE_FOUND=$FOUND_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Download and hash Termux artifacts
+        id: termux_hashes
+        run: |
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+          TOOL="${{ steps.info.outputs.TOOL }}"
+
+          echo "Downloading Termux (Android) artifacts from https://github.com/$REPO/releases/download/v$VERSION/"
+
+          # Track if we found any artifacts
+          FOUND_COUNT=0
+
+          # Download and hash Android ARM64 (for Termux)
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-linux-android.tar.gz"; then
+            HASH_ANDROID_ARM64=$(sha256sum "$TOOL-aarch64-linux-android.tar.gz" | cut -d' ' -f1)
+            echo "HASH_ANDROID_ARM64=$HASH_ANDROID_ARM64" >> $GITHUB_OUTPUT
+            echo "✓ Android ARM64: $HASH_ANDROID_ARM64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Android ARM64 not found"
+          fi
+
+          # Warn if no Termux artifacts were found
+          if [ $FOUND_COUNT -eq 0 ]; then
+            echo "::warning::No Termux (Android) artifacts found at https://github.com/$REPO/releases/download/v$VERSION/"
+            echo "::warning::Termux package generation will be skipped"
+          else
+            echo ""
+            echo "Successfully downloaded and hashed $FOUND_COUNT Termux artifact(s)"
+          fi
+
+          echo "TERMUX_FOUND=$FOUND_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Generate Alpine APKBUILD
+        if: steps.alpine_hashes.outputs.ALPINE_FOUND != '0'
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+
+          # Detect binaries from Homebrew formula
+          BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+
+          # Create install commands for Alpine
+          INSTALL_CMDS=""
+          for binary in $BINARIES; do
+            INSTALL_CMDS="${INSTALL_CMDS}	install -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\"
+          "
+          done
+
+          # Get SHA512 hashes
+          HASH_X64="${{ steps.alpine_hashes.outputs.HASH_LINUX_MUSL_X64 }}"
+          HASH_ARM64="${{ steps.alpine_hashes.outputs.HASH_LINUX_MUSL_ARM64 }}"
+
+          cat > "alpine/APKBUILD.$TOOL" << 'EOF'
+          # Contributor: CaddyGlow <github.com/CaddyGlow>
+          # Maintainer: CaddyGlow <github.com/CaddyGlow>
+          pkgname=TOOL_PLACEHOLDER
+          pkgver=VERSION_PLACEHOLDER
+          pkgrel=0
+          pkgdesc="Tool from REPO_PLACEHOLDER"
+          url="https://github.com/REPO_PLACEHOLDER"
+          arch="x86_64 aarch64"
+          license="MIT"
+          options="!check" # No test suite in upstream
+          source="
+          	$pkgname-$pkgver-x86_64.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz
+          	$pkgname-$pkgver-aarch64.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz
+          "
+
+          case "$CARCH" in
+          	x86_64)
+          		sha512sums="HASH_X64_PLACEHOLDER
+          SKIP"
+          		;;
+          	aarch64)
+          		sha512sums="SKIP
+          HASH_ARM64_PLACEHOLDER"
+          		;;
+          esac
+
+          builddir="$srcdir"
+
+          package() {
+          INSTALL_PLACEHOLDER
+          }
+          EOF
+
+          # Replace placeholders
+          sed -i "s/TOOL_PLACEHOLDER/$TOOL/g" "alpine/APKBUILD.$TOOL"
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" "alpine/APKBUILD.$TOOL"
+          sed -i "s|REPO_PLACEHOLDER|$REPO|g" "alpine/APKBUILD.$TOOL"
+          sed -i "s|HASH_X64_PLACEHOLDER|$HASH_X64|g" "alpine/APKBUILD.$TOOL"
+          sed -i "s|HASH_ARM64_PLACEHOLDER|$HASH_ARM64|g" "alpine/APKBUILD.$TOOL"
+          sed -i "s|INSTALL_PLACEHOLDER|$INSTALL_CMDS|g" "alpine/APKBUILD.$TOOL"
+
+          echo "Generated alpine/APKBUILD.$TOOL"
+          cat "alpine/APKBUILD.$TOOL"
+
+      - name: Generate Termux build.sh
+        if: steps.termux_hashes.outputs.TERMUX_FOUND != '0'
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+
+          # Detect binaries from Homebrew formula
+          BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+
+          # Create install commands for Termux
+          INSTALL_CMDS=""
+          for binary in $BINARIES; do
+            INSTALL_CMDS="${INSTALL_CMDS}	install -Dm700 -t \"\${TERMUX_PREFIX}/bin\" $binary
+          "
+          done
+
+          # Get SHA256 hash
+          HASH_ANDROID="${{ steps.termux_hashes.outputs.HASH_ANDROID_ARM64 }}"
+
+          cat > "termux/build.sh.$TOOL" << 'EOF'
+          TERMUX_PKG_HOMEPAGE=https://github.com/REPO_PLACEHOLDER
+          TERMUX_PKG_DESCRIPTION="Tool from REPO_PLACEHOLDER"
+          TERMUX_PKG_LICENSE="MIT"
+          TERMUX_PKG_VERSION=VERSION_PLACEHOLDER
+          TERMUX_PKG_SRCURL=https://github.com/REPO_PLACEHOLDER/releases/download/v${TERMUX_PKG_VERSION}/TOOL_PLACEHOLDER-aarch64-linux-android.tar.gz
+          TERMUX_PKG_SHA256=HASH_PLACEHOLDER
+          TERMUX_PKG_BUILD_IN_SRC=true
+          TERMUX_PKG_PLATFORM_INDEPENDENT=false
+
+          termux_step_make_install() {
+          INSTALL_PLACEHOLDER
+          }
+          EOF
+
+          # Replace placeholders
+          sed -i "s/TOOL_PLACEHOLDER/$TOOL/g" "termux/build.sh.$TOOL"
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" "termux/build.sh.$TOOL"
+          sed -i "s|REPO_PLACEHOLDER|$REPO|g" "termux/build.sh.$TOOL"
+          sed -i "s|HASH_PLACEHOLDER|$HASH_ANDROID|g" "termux/build.sh.$TOOL"
+          sed -i "s|INSTALL_PLACEHOLDER|$INSTALL_CMDS|g" "termux/build.sh.$TOOL"
+
+          echo "Generated termux/build.sh.$TOOL"
+          cat "termux/build.sh.$TOOL"
+
+      - name: Commit and push
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Add files that exist
+          [ -f "alpine/APKBUILD.$TOOL" ] && git add "alpine/APKBUILD.$TOOL"
+          [ -f "termux/build.sh.$TOOL" ] && git add "termux/build.sh.$TOOL"
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Generate APK packages for $TOOL v$VERSION"
+            git push
+            echo "Changes committed and pushed"
+          fi
+
+      - name: Summary
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          ALPINE_FOUND="${{ steps.alpine_hashes.outputs.ALPINE_FOUND }}"
+          TERMUX_FOUND="${{ steps.termux_hashes.outputs.TERMUX_FOUND }}"
+
+          echo "### APK Package Generation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Generated packages:**" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$ALPINE_FOUND" != "0" ]; then
+            echo "- ✅ Alpine Linux: \`alpine/APKBUILD.$TOOL\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ Alpine Linux: Skipped (no musl artifacts found)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$TERMUX_FOUND" != "0" ]; then
+            echo "- ✅ Termux: \`termux/build.sh.$TOOL\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ Termux: Skipped (no Android artifacts found)" >> $GITHUB_STEP_SUMMARY
+          fi

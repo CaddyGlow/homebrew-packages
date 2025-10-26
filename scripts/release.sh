@@ -11,6 +11,7 @@ NC='\033[0m' # No Color
 # Script configuration
 SCRIPT_NAME="$(basename "$0")"
 FORCE_MODE=false
+UPDATE_PACKAGES_ONLY=false
 NEW_VERSION=""
 PROJECT_PATH=""
 
@@ -52,21 +53,24 @@ confirm() {
 
 usage() {
     cat <<EOF
-Usage: $SCRIPT_NAME <project-path> [version] [--force]
+Usage: $SCRIPT_NAME <project-path> [version] [--force|--update-packages]
 
 Release management script for Rust projects.
 
 Arguments:
-  project-path    Path to the Rust project directory
-  version         Optional: specific version (e.g., 0.2.0)
-                  If omitted, auto-increments patch version
-  --force         Override existing release (dangerous!)
+  project-path       Path to the Rust project directory
+  version            Optional: specific version (e.g., 0.2.0)
+                     If omitted, auto-increments patch version
+  --force            Override existing release (dangerous!)
+  --update-packages  Trigger package manager update for current version
+                     (without creating a new release)
 
 Examples:
   $SCRIPT_NAME ~/projects/quickctx
   $SCRIPT_NAME ~/projects/quickctx 0.2.0
   $SCRIPT_NAME ~/projects/quickctx --force
   $SCRIPT_NAME ~/projects/quickctx 0.1.1 --force
+  $SCRIPT_NAME ~/projects/quickctx --update-packages
 
 EOF
     exit 1
@@ -87,6 +91,10 @@ parse_args() {
                 FORCE_MODE=true
                 shift
                 ;;
+            --update-packages|-u)
+                UPDATE_PACKAGES_ONLY=true
+                shift
+                ;;
             *)
                 if [[ -z "$NEW_VERSION" ]]; then
                     NEW_VERSION="$1"
@@ -98,6 +106,11 @@ parse_args() {
                 ;;
         esac
     done
+
+    # Validate conflicting flags
+    if [[ "$FORCE_MODE" == true && "$UPDATE_PACKAGES_ONLY" == true ]]; then
+        die "Cannot use --force and --update-packages together"
+    fi
 
     # Resolve to absolute path
     PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
@@ -559,6 +572,61 @@ normal_release_flow() {
     info "Monitor CI/CD at: $(gh repo view --json url -q .url)/actions"
 }
 
+update_packages_flow() {
+    local current_version target_version tool_name
+
+    current_version=$(verify_versions)
+
+    # Determine version to update
+    if [[ -z "$NEW_VERSION" ]]; then
+        target_version="$current_version"
+        info "Using current version: $target_version"
+    else
+        target_version="$NEW_VERSION"
+        info "Using specified version: $target_version"
+    fi
+
+    # Get repository info
+    cd "$PROJECT_PATH"
+    local repo
+    repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
+
+    if [[ -z "$repo" ]]; then
+        die "Could not determine GitHub repository"
+    fi
+
+    # Extract tool name from repo (e.g., CaddyGlow/quickctx -> quickctx)
+    tool_name=$(basename "$repo")
+
+    # Show what will be done
+    echo ""
+    info "Package Manager Update:"
+    echo "  Repository: $repo"
+    echo "  Tool: $tool_name"
+    echo "  Version: $target_version"
+    echo ""
+
+    if ! confirm "Trigger package manager update workflow?"; then
+        die "Package manager update aborted by user"
+    fi
+
+    # Check if update-package-managers workflow exists
+    if [[ ! -f "$PROJECT_PATH/.github/workflows/update-package-managers.yml" ]]; then
+        die "Workflow not found: .github/workflows/update-package-managers.yml"
+    fi
+
+    # Trigger the workflow via workflow_dispatch
+    info "Triggering update-package-managers workflow..."
+
+    if gh workflow run update-package-managers.yml -f version="$target_version" 2>/dev/null; then
+        success "Package manager update workflow triggered!"
+        echo ""
+        info "Monitor workflow at: $(gh repo view --json url -q .url)/actions"
+    else
+        die "Failed to trigger workflow. Make sure the workflow has workflow_dispatch enabled."
+    fi
+}
+
 force_release_flow() {
     local current_version target_version
 
@@ -615,12 +683,18 @@ main() {
 
     check_prerequisites
     check_project_directory
-    check_working_tree
 
-    if [[ "$FORCE_MODE" == true ]]; then
-        force_release_flow
+    if [[ "$UPDATE_PACKAGES_ONLY" == true ]]; then
+        # Skip working tree check for package updates
+        update_packages_flow
     else
-        normal_release_flow
+        check_working_tree
+
+        if [[ "$FORCE_MODE" == true ]]; then
+            force_release_flow
+        else
+            normal_release_flow
+        fi
     fi
 }
 

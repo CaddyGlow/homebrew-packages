@@ -1,0 +1,12 @@
+TERMUX_PKG_HOMEPAGE=https://github.com/CaddyGlow/shelltape
+TERMUX_PKG_DESCRIPTION="Tool from CaddyGlow/shelltape"
+TERMUX_PKG_LICENSE="MIT"
+TERMUX_PKG_VERSION=0.1.4
+TERMUX_PKG_SRCURL=https://github.com/CaddyGlow/shelltape/releases/download/v${TERMUX_PKG_VERSION}/shelltape-aarch64-linux-android.tar.gz
+TERMUX_PKG_SHA256=SKIP
+TERMUX_PKG_BUILD_IN_SRC=true
+TERMUX_PKG_PLATFORM_INDEPENDENT=false
+
+termux_step_make_install() {
+	install -Dm700 -t "${TERMUX_PREFIX}/bin" shelltape
+}

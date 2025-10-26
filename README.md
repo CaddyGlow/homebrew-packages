@@ -28,12 +28,35 @@ scoop install <tool-name>
 scoop update && scoop update <tool-name>
 ```
 
+## Alpine Linux
+
+```bash
+# Alpine packages are available via APKBUILD files in the alpine/ directory
+# To use them, you'll need to build the package using Alpine's build system
+
+# Example for building a package:
+cd alpine/
+abuild -r APKBUILD.<tool-name>
+```
+
+## Termux (Android)
+
+```bash
+# Termux packages are available via build.sh files in the termux/ directory
+# These packages can be built using the termux-packages build system
+
+# For more information on building Termux packages, visit:
+# https://github.com/termux/termux-packages
+```
+
 ## Repository Structure
 
 ```
 homebrew-packages/
 ├── Formula/           # Homebrew formulas (macOS/Linux)
-└── scoop/            # Scoop manifests (Windows)
+├── scoop/            # Scoop manifests (Windows)
+├── alpine/           # Alpine Linux APKBUILD files
+└── termux/           # Termux build scripts
 ```
 
 ## Available Tools

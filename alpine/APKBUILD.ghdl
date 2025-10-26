@@ -1,0 +1,33 @@
+# Contributor: CaddyGlow <github.com/CaddyGlow>
+# Maintainer: CaddyGlow <github.com/CaddyGlow>
+pkgname=ghdl
+pkgver=0.1.3
+pkgrel=0
+pkgdesc="Tool from CaddyGlow/ghdl"
+url="https://github.com/CaddyGlow/ghdl"
+arch="x86_64 aarch64"
+license="MIT"
+options="!check" # No test suite in upstream
+source="
+	ghdl-$pkgver-x86_64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/ghdl-x86_64-unknown-linux-musl.tar.gz
+	ghdl-$pkgver-aarch64.tar.gz::https://github.com/CaddyGlow/ghdl/releases/download/v$pkgver/ghdl-aarch64-unknown-linux-musl.tar.gz
+"
+
+case "$CARCH" in
+	x86_64)
+		_source_arch="x86_64"
+		sha512sums="SKIP
+SKIP"
+		;;
+	aarch64)
+		_source_arch="aarch64"
+		sha512sums="SKIP
+SKIP"
+		;;
+esac
+
+builddir="$srcdir"
+
+package() {
+	install -Dm755 "$builddir/ghdl" "$pkgdir/usr/bin/ghdl"
+}

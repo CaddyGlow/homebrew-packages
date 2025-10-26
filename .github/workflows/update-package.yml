@@ -219,6 +219,21 @@ jobs:
           echo "Updated scoop/$TOOL.json"
           cat "scoop/$TOOL.json"
 
+      - name: Trigger APK package generation
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+
+          echo "Triggering APK package generation workflow..."
+
+          gh workflow run generate-apk-packages.yml \
+            -f tool="$TOOL" \
+            -f version="$VERSION" \
+            -f repository="$REPO"
+
+          echo "APK package generation workflow triggered"
+
       - name: Commit and push
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
@@ -242,11 +257,13 @@ jobs:
           TOOL="${{ steps.info.outputs.TOOL }}"
           VERSION="${{ steps.info.outputs.VERSION }}"
 
-          echo "### Update Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### Package Update Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Updated files:" >> $GITHUB_STEP_SUMMARY
-          echo "- \`Formula/$TOOL.rb\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`scoop/$TOOL.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Updated packages:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Homebrew: \`Formula/$TOOL.rb\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Scoop: \`scoop/$TOOL.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** APK packages (Alpine/Termux) are being generated in a separate workflow." >> $GITHUB_STEP_SUMMARY
