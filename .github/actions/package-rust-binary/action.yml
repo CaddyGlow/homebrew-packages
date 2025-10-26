@@ -27,8 +27,8 @@ runs:
       if: inputs.archive_format == 'zip'
       shell: pwsh
       run: |
-        $BINARIES = '${{ inputs.binaries }}' | ConvertFrom-Json
-        $ASSETS = '${{ inputs.assets }}' | ConvertFrom-Json
+        $BINARIES = @('${{ inputs.binaries }}' | ConvertFrom-Json)
+        $ASSETS = @('${{ inputs.assets }}' | ConvertFrom-Json)
         $TARGET = "${{ inputs.target }}"
         $PRIMARY_BIN = $BINARIES[0]
 
