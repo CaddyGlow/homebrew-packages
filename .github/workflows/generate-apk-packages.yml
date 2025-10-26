@@ -122,6 +122,49 @@ jobs:
 
           echo "TERMUX_FOUND=$FOUND_COUNT" >> $GITHUB_OUTPUT
 
+      - name: Download and hash Debian artifacts
+        id: debian_hashes
+        run: |
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+          TOOL="${{ steps.info.outputs.TOOL }}"
+
+          echo "Downloading Debian (glibc) artifacts from https://github.com/$REPO/releases/download/v$VERSION/"
+
+          # Track if we found any artifacts
+          FOUND_COUNT=0
+
+          # Download and hash Linux x86_64 gnu (for Debian/Ubuntu)
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-x86_64-unknown-linux-gnu.tar.gz"; then
+            HASH_LINUX_GNU_X64=$(sha256sum "$TOOL-x86_64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_GNU_X64=$HASH_LINUX_GNU_X64" >> $GITHUB_OUTPUT
+            echo "✓ Linux glibc x64: $HASH_LINUX_GNU_X64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux glibc x64 not found"
+          fi
+
+          # Download and hash Linux ARM64 gnu (for Debian/Ubuntu)
+          if wget -q "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-unknown-linux-gnu.tar.gz"; then
+            HASH_LINUX_GNU_ARM64=$(sha256sum "$TOOL-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
+            echo "HASH_LINUX_GNU_ARM64=$HASH_LINUX_GNU_ARM64" >> $GITHUB_OUTPUT
+            echo "✓ Linux glibc ARM64: $HASH_LINUX_GNU_ARM64"
+            FOUND_COUNT=$((FOUND_COUNT + 1))
+          else
+            echo "✗ Linux glibc ARM64 not found"
+          fi
+
+          # Warn if no Debian artifacts were found
+          if [ $FOUND_COUNT -eq 0 ]; then
+            echo "::warning::No Debian (glibc) artifacts found at https://github.com/$REPO/releases/download/v$VERSION/"
+            echo "::warning::Debian package generation will be skipped"
+          else
+            echo ""
+            echo "Successfully downloaded and hashed $FOUND_COUNT Debian artifact(s)"
+          fi
+
+          echo "DEBIAN_FOUND=$FOUND_COUNT" >> $GITHUB_OUTPUT
+
       - name: Generate Alpine APKBUILD
         if: steps.alpine_hashes.outputs.ALPINE_FOUND != '0'
         run: |
@@ -310,12 +353,29 @@ jobs:
 
           echo "Termux package build workflow triggered"
 
+      - name: Trigger Debian package build
+        if: steps.debian_hashes.outputs.DEBIAN_FOUND != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+
+          echo "Triggering Debian package build workflow..."
+
+          gh workflow run build-debian-packages.yml \
+            -f tool="$TOOL" \
+            -f version="$VERSION"
+
+          echo "Debian package build workflow triggered"
+
       - name: Summary
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
           VERSION="${{ steps.info.outputs.VERSION }}"
           ALPINE_FOUND="${{ steps.alpine_hashes.outputs.ALPINE_FOUND }}"
           TERMUX_FOUND="${{ steps.termux_hashes.outputs.TERMUX_FOUND }}"
+          DEBIAN_FOUND="${{ steps.debian_hashes.outputs.DEBIAN_FOUND }}"
 
           echo "### APK Package Generation Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -334,4 +394,10 @@ jobs:
             echo "- ✅ Termux: \`termux/build.sh.$TOOL\` (build triggered)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ Termux: Skipped (no Android artifacts found)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$DEBIAN_FOUND" != "0" ]; then
+            echo "- ✅ Debian/Ubuntu: Build triggered for $DEBIAN_FOUND architecture(s)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ Debian/Ubuntu: Skipped (no glibc artifacts found)" >> $GITHUB_STEP_SUMMARY
           fi

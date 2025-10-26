@@ -1,0 +1,280 @@
+name: Build Debian Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version (e.g., 0.1.4)'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [build-debian]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: "debian-build"
+  cancel-in-progress: false
+
+jobs:
+  build-debian:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          echo "Building Debian package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Architecture: ${{ matrix.arch }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64'
+
+      - name: Build Debian package
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          ARCH="${{ matrix.arch }}"
+
+          # Determine platform for Docker
+          if [ "$ARCH" = "arm64" ]; then
+            PLATFORM="linux/arm64"
+            RUST_ARCH="aarch64"
+          else
+            PLATFORM="linux/amd64"
+            RUST_ARCH="x86_64"
+          fi
+
+          # Get description from Homebrew formula
+          DESCRIPTION=$(grep -oP 'desc "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null || echo "Tool from repository")
+
+          # Detect binaries from Homebrew formula
+          BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+
+          # Get repository from Homebrew formula
+          REPO=$(grep -oP 'homepage "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sed 's|https://github.com/||' || echo "unknown/repo")
+
+          echo "Description: $DESCRIPTION"
+          echo "Binaries: $BINARIES"
+          echo "Repository: $REPO"
+
+          # Create build script
+          cat > build-deb.sh << 'BUILDSCRIPT'
+          #!/bin/bash
+          set -e
+
+          TOOL=$1
+          VERSION=$2
+          ARCH=$3
+          RUST_ARCH=$4
+          REPO=$5
+          DESCRIPTION=$6
+          shift 6
+          BINARIES="$@"
+
+          echo "Building Debian package for $TOOL v$VERSION ($ARCH)"
+
+          # Install required tools
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq wget tar dpkg-dev
+
+          # Create package structure
+          PKGDIR="${TOOL}_${VERSION}_${ARCH}"
+          mkdir -p "$PKGDIR/usr/bin"
+          mkdir -p "$PKGDIR/DEBIAN"
+
+          # Download and extract the tarball
+          DOWNLOAD_URL="https://github.com/$REPO/releases/download/v${VERSION}/${TOOL}-${RUST_ARCH}-unknown-linux-gnu.tar.gz"
+          echo "Downloading from: $DOWNLOAD_URL"
+
+          wget -q -O /tmp/package.tar.gz "$DOWNLOAD_URL"
+
+          # Extract directly to bin directory
+          tar -xzf /tmp/package.tar.gz -C "$PKGDIR/usr/bin"
+
+          # Clean up
+          rm /tmp/package.tar.gz
+
+          # Verify binaries exist
+          echo "Verifying binaries..."
+          for binary in $BINARIES; do
+            if [ -f "$PKGDIR/usr/bin/$binary" ]; then
+              echo "  ✓ $binary"
+            else
+              echo "  ✗ $binary (not found)"
+              exit 1
+            fi
+          done
+
+          # Make binaries executable
+          find "$PKGDIR/usr/bin" -type f -exec chmod 755 {} \;
+
+          # Create control file
+          cat > "$PKGDIR/DEBIAN/control" << EOF
+          Package: $TOOL
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: $ARCH
+          Maintainer: CaddyGlow <caddyglow@pm.me>
+          Description: $DESCRIPTION
+          EOF
+
+          # Build the .deb package
+          dpkg-deb --build "$PKGDIR" "/output/${TOOL}_${VERSION}_${ARCH}.deb"
+
+          echo "Package built: /output/${TOOL}_${VERSION}_${ARCH}.deb"
+          ls -lh /output/
+          BUILDSCRIPT
+
+          chmod +x build-deb.sh
+
+          # Create output directory
+          mkdir -p output-$ARCH
+
+          # Run build in Debian container
+          docker run --rm \
+            --platform $PLATFORM \
+            -v "$(pwd):/workspace" \
+            -v "$(pwd)/output-$ARCH:/output" \
+            debian:bookworm-slim \
+            bash /workspace/build-deb.sh "$TOOL" "$VERSION" "$ARCH" "$RUST_ARCH" "$REPO" "$DESCRIPTION" $BINARIES
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-${{ matrix.arch }}-${{ steps.info.outputs.TOOL }}
+          path: output-${{ matrix.arch }}/*.deb
+
+  attach-to-release:
+    needs: build-debian
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tool info
+        id: info
+        run: |
+          TOOL="${{ github.event.client_payload.tool || github.event.inputs.tool }}"
+          VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+
+          echo "TOOL=$TOOL" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          # Create release tag
+          RELEASE_TAG="debian-packages-v$(date +%Y%m%d)"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: List packages
+        run: |
+          echo "Built packages:"
+          find packages -name '*.deb' -exec ls -lh {} \;
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          # Check if release exists
+          if gh release view "$RELEASE_TAG" 2>/dev/null; then
+            echo "Release $RELEASE_TAG exists, will update it"
+            RELEASE_EXISTS=true
+          else
+            echo "Creating new release $RELEASE_TAG"
+            RELEASE_EXISTS=false
+          fi
+
+          # Create release if it doesn't exist
+          if [ "$RELEASE_EXISTS" = "false" ]; then
+            gh release create "$RELEASE_TAG" \
+              --title "Debian Packages $(date +%Y-%m-%d)" \
+              --notes "Debian/Ubuntu packages for CaddyGlow tools.
+
+          ## Installation
+
+          Download the appropriate .deb file for your architecture:
+
+          \`\`\`bash
+          # For x86_64/amd64
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_amd64.deb
+          sudo dpkg -i ${TOOL}_${VERSION}_amd64.deb
+
+          # For ARM64
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_arm64.deb
+          sudo dpkg -i ${TOOL}_${VERSION}_arm64.deb
+          \`\`\`
+
+          Or using apt:
+
+          \`\`\`bash
+          # For x86_64/amd64
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_amd64.deb
+          sudo apt install ./${TOOL}_${VERSION}_amd64.deb
+
+          # For ARM64
+          wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_arm64.deb
+          sudo apt install ./${TOOL}_${VERSION}_arm64.deb
+          \`\`\`
+
+          ## Packages Updated
+
+          - $TOOL v$VERSION"
+          fi
+
+          # Upload all .deb files to release
+          find packages -name '*.deb' -exec gh release upload "$RELEASE_TAG" {} --clobber \;
+
+          echo "Packages uploaded to release: $RELEASE_TAG"
+
+      - name: Summary
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          RELEASE_TAG="${{ steps.info.outputs.RELEASE_TAG }}"
+
+          echo "### Debian Packages Built and Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** $TOOL" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** [$RELEASE_TAG](https://github.com/CaddyGlow/homebrew-packages/releases/tag/$RELEASE_TAG)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# For x86_64/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_amd64.deb" >> $GITHUB_STEP_SUMMARY
+          echo "sudo apt install ./${TOOL}_${VERSION}_amd64.deb" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# For ARM64" >> $GITHUB_STEP_SUMMARY
+          echo "wget https://github.com/CaddyGlow/homebrew-packages/releases/download/$RELEASE_TAG/${TOOL}_${VERSION}_arm64.deb" >> $GITHUB_STEP_SUMMARY
+          echo "sudo apt install ./${TOOL}_${VERSION}_arm64.deb" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
