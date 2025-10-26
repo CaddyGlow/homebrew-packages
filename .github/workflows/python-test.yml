@@ -12,7 +12,7 @@ on:
         description: 'Python version to use'
         required: false
         type: string
-        default: '3.12'
+        default: '3.11'
       skip_formatting:
         description: 'Skip formatting check'
         required: false

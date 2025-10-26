@@ -1,4 +1,4 @@
 [
-  {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.12"},
-  {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.12"}
+  {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.11"},
+  {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.11"}
 ]

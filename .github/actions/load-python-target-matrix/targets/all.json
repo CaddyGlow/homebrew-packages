@@ -1,7 +1,7 @@
 [
-  {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.12"},
-  {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.12"},
-  {"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.12"},
-  {"target": "x86_64-apple-darwin", "runs_on": "macos-13", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.12"},
-  {"target": "aarch64-apple-darwin", "runs_on": "macos-14", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.12"}
+  {"target": "x86_64-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.11"},
+  {"target": "i686-pc-windows-msvc", "runs_on": "windows-latest", "archive": "zip", "exe_suffix": ".exe", "python_version": "3.11"},
+  {"target": "x86_64-unknown-linux-gnu", "runs_on": "ubuntu-latest", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.11"},
+  {"target": "x86_64-apple-darwin", "runs_on": "macos-13", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.11"},
+  {"target": "aarch64-apple-darwin", "runs_on": "macos-14", "archive": "tar.gz", "exe_suffix": "", "python_version": "3.11"}
 ]
