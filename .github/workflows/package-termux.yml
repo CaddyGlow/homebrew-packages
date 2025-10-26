@@ -133,16 +133,16 @@ jobs:
           cat > "$PKGDIR/DEBIAN/control" << EOF
           Package: $TOOL
           Version: $VERSION
-          Architecture: aarch64
+          Architecture: android-aarch64
           Maintainer: CaddyGlow <caddyglow@pm.me>
           Description: $DESCRIPTION
           Homepage: https://github.com/$REPO
           EOF
 
           # Build the .deb package
-          dpkg-deb --build "$PKGDIR" "/output/${TOOL}_${VERSION}_aarch64.deb"
+          dpkg-deb --build "$PKGDIR" "/output/${TOOL}_${VERSION}_android-aarch64.deb"
 
-          echo "Package built: /output/${TOOL}_${VERSION}_aarch64.deb"
+          echo "Package built: /output/${TOOL}_${VERSION}_android-aarch64.deb"
           ls -lh /output/
           DEBSCRIPT
 

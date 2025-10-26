@@ -88,7 +88,7 @@ CaddyGlow/quickctx/releases/tag/v0.1.5/
 ├── quickctx-0.1.5-r0.apk                           # From package-alpine.yml
 ├── quickctx_0.1.5_amd64.deb                        # From package-debian.yml
 ├── quickctx_0.1.5_arm64.deb                        # From package-debian.yml
-└── quickctx_0.1.5_aarch64.deb (Termux)             # From package-termux.yml
+└── quickctx_0.1.5_android-aarch64.deb              # From package-termux.yml
 ```
 
 ## Workflow Inputs
