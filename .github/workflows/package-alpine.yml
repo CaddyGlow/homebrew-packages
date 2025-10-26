@@ -141,7 +141,7 @@ jobs:
           arch="$ARCH"
           license="MIT"
           options="!check"
-          source="https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
+          source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
           sha512sums="SKIP"
 
           builddir="\$srcdir"
