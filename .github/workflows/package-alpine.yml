@@ -141,10 +141,18 @@ jobs:
           url="https://github.com/REPO_PLACEHOLDER"
           arch="x86_64 aarch64"
           license="MIT"
-          options="!check"
+          options="!check !strip"
 
-          source_x86_64="$pkgname-$pkgver.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz"
-          source_aarch64="$pkgname-$pkgver.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz"
+          case "$CARCH" in
+          	x86_64)
+          		source="https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz"
+          		sha512sums="SKIP"
+          		;;
+          	aarch64)
+          		source="https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz"
+          		sha512sums="SKIP"
+          		;;
+          esac
 
           builddir="$srcdir"
 
