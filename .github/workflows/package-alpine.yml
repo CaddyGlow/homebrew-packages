@@ -150,6 +150,8 @@ jobs:
           $(for binary in $BINARIES; do echo "\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\""; done)
           }
           EOF
+            echo "Generated APKBUILD for $ARCH:"
+            cat APKBUILD
           fi
 
           # Create output directory
