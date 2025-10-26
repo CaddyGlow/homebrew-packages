@@ -279,6 +279,8 @@ jobs:
 
       - name: Trigger Alpine package build
         if: steps.alpine_hashes.outputs.ALPINE_FOUND != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
           VERSION="${{ steps.info.outputs.VERSION }}"
