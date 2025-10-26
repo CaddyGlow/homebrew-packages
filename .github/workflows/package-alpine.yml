@@ -35,6 +35,9 @@ jobs:
       matrix:
         arch: [x86_64, aarch64]
 
+    outputs:
+      release_tag: ${{ steps.set_release.outputs.RELEASE_TAG }}
+
     steps:
       - name: Checkout homebrew-packages for APKBUILD templates
         uses: actions/checkout@v4
@@ -49,7 +52,7 @@ jobs:
           path: tool-repo
 
       - name: Set release tag
-        id: release
+        id: set_release
         run: |
           if [ -n "${{ inputs.release_tag }}" ]; then
             RELEASE_TAG="${{ inputs.release_tag }}"
@@ -59,117 +62,135 @@ jobs:
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "Using release tag: $RELEASE_TAG"
 
-      - name: Set up QEMU
+      - name: Set up QEMU (for arm64 emulation)
         uses: docker/setup-qemu-action@v3
         if: matrix.arch == 'aarch64'
 
       - name: Build Alpine package in Docker
+        env:
+          TOOL: ${{ inputs.tool }}
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ inputs.repository }}
+          ARCH: ${{ matrix.arch }}
         run: |
-          TOOL="${{ inputs.tool }}"
-          VERSION="${{ inputs.version }}"
-          REPO="${{ inputs.repository }}"
-          ARCH="${{ matrix.arch }}"
-
+          set -euo pipefail
           echo "Building Alpine package:"
           echo "  Tool: $TOOL"
           echo "  Version: $VERSION"
           echo "  Repository: $REPO"
           echo "  Architecture: $ARCH"
 
-          # Determine Docker platform
           if [ "$ARCH" = "aarch64" ]; then
             PLATFORM="linux/arm64"
+            TAR_ARCH="aarch64"
           else
             PLATFORM="linux/amd64"
+            TAR_ARCH="x86_64"
           fi
 
-          # Detect binaries from Homebrew formula if available
+          # Determine binaries from Homebrew formula if available
           if [ -f "homebrew-packages/Formula/$TOOL.rb" ]; then
             BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "homebrew-packages/Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
           else
             BINARIES="$TOOL"
           fi
-
           echo "Binaries to package: $BINARIES"
 
-          # Create build script
-          cat > build.sh << 'BUILDSCRIPT'
+          # create a build script that will run inside the container
+          cat > build.sh <<'BUILDSCRIPT'
           #!/bin/sh
-          set -e
+          set -eu
 
-          # Install dependencies
+          TOOL="$1"
+          ARCH="$2"
+          WORKSPACE="/workspace"
+          OUTPUT="/output"
+
           apk add --no-cache alpine-sdk sudo
 
-          # Setup builder user
+          # Setup builder user and key (non-interactive)
           adduser -D builder
           addgroup builder abuild
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          mkdir -p /home/builder
+          chown builder:builder /home/builder
 
-          # Generate signing key
-          su builder -c "abuild-keygen -a -i -n"
+          # generate key for abuild for the builder user (non-interactive)
+          su builder -c "abuild-keygen -a -i -n" || true
 
-          # Build package
-          TOOL=$1
-          ARCH=$2
-          su builder -c "
+          # Prepare build dir
+          su builder -c '
+            set -eux
             mkdir -p ~/build
-            cp /workspace/APKBUILD ~/build/APKBUILD
+            cp '"$WORKSPACE"'/APKBUILD ~/build/APKBUILD
             cd ~/build
+            # abuild expects files in /home/builder, and abuild -r will fetch source and build
             abuild -r
-          "
+          '
 
-          # Copy built package to output
-          mkdir -p /output
-          find /home/builder/packages -name '*.apk' -exec cp {} /output/ \;
+          # copy result
+          mkdir -p "$OUTPUT"
+          find /home/builder/packages -name "*.apk" -exec cp {} "$OUTPUT" \; || true
           BUILDSCRIPT
+                    chmod +x build.sh
 
-          chmod +x build.sh
+                    # If a pre-made APKBUILD exists in homebrew-packages use it, else generate.
+                    if [ -f "homebrew-packages/alpine/APKBUILD.$TOOL" ]; then
+                      cp "homebrew-packages/alpine/APKBUILD.$TOOL" APKBUILD
+                    else
+                      # Download tarball to compute checksum
+                      TARBALL_URL="https://github.com/$REPO/releases/download/v$VERSION/$TOOL-$TAR_ARCH-unknown-linux-musl.tar.gz"
+                      echo "Downloading $TARBALL_URL to calculate checksum..."
+                      curl -fsSL "$TARBALL_URL" -o "/tmp/$TOOL-$TAR_ARCH.tar.gz"
 
-          # Download APKBUILD from homebrew-packages or generate it
-          if [ -f "homebrew-packages/alpine/APKBUILD.$TOOL" ]; then
-            cp "homebrew-packages/alpine/APKBUILD.$TOOL" APKBUILD
-          else
-            # Download tarball and calculate checksum
-            TARBALL_URL="https://github.com/$REPO/releases/download/v$VERSION/$TOOL-$ARCH-unknown-linux-musl.tar.gz"
-            echo "Downloading $TARBALL_URL to calculate checksum..."
-            curl -fsSL "$TARBALL_URL" -o "/tmp/$TOOL-$ARCH.tar.gz"
-            CHECKSUM="$(sha512sum "/tmp/$TOOL-$ARCH.tar.gz" | awk '{print $1}') $TOOL-$ARCH.tar.gz"
-            # CHECKSUM=$(sha512sum "/tmp/$TOOL-$ARCH.tar.gz" | awk '{print $1}')
-            echo "SHA512: $CHECKSUM"
+                      CHECKSUM_ONLY="$(sha512sum "/tmp/$TOOL-$TAR_ARCH.tar.gz" | awk '{print $1}')"
+                      echo "SHA512: $CHECKSUM_ONLY"
 
-            # Generate architecture-specific APKBUILD
-            cat > APKBUILD << EOF
+                      # We will set the local source filename to match what abuild will expect:
+                      # use "$TOOL-$VERSION.tar.gz" locally but point to architecture-specific remote URL.
+                      LOCAL_NAME="$TOOL-$VERSION.tar.gz"
+                      REMOTE_URL="https://github.com/$REPO/releases/download/v$VERSION/$TOOL-$TAR_ARCH-unknown-linux-musl.tar.gz"
+
+                      # Generate APKBUILD — note: pkgrel=1, sha512sums contains only the hash.
+                      # Also produce real tab characters for package() using printf.
+                      {
+                        cat <<EOF
           # Contributor: CaddyGlow <caddyglow@pm.me>
           # Maintainer: CaddyGlow <caddyglow@pm.me>
           pkgname=$TOOL
           pkgver=$VERSION
-          pkgrel=0
+          pkgrel=1
           pkgdesc="Tool from $REPO"
           url="https://github.com/$REPO"
           arch="$ARCH"
           license="MIT"
           options="!check"
-          source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
-          sha512sums="$CHECKSUM"
+          source="$LOCAL_NAME::$REMOTE_URL"
+          sha512sums="$CHECKSUM_ONLY"
 
           builddir="\$srcdir"
-
-          package() {
-          $(for binary in $BINARIES; do echo "\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\""; done)
-          }
           EOF
-            echo "Generated APKBUILD for $ARCH with checksum"
-            cat APKBUILD
+
+              printf 'package() {\n'
+              for bin in $BINARIES; do
+                # using a literal tab at start of line
+                printf '\tinstall -Dm755 "%s" "$pkgdir/usr/bin/%s"\n' "\$builddir/$bin" "$bin"
+              done
+              printf '}\n'
+            } > APKBUILD
+
+            echo "Generated APKBUILD:"
+            sed -n '1,200p' APKBUILD
           fi
 
-          # Create output directory
+          # Prepare output directory
           mkdir -p output-$ARCH
 
           # Run build in Alpine container
           docker run --rm \
             --platform $PLATFORM \
-            -v "$(pwd)/APKBUILD:/workspace/APKBUILD" \
-            -v "$(pwd)/build.sh:/workspace/build.sh" \
+            -v "$(pwd)/APKBUILD:/workspace/APKBUILD:ro" \
+            -v "$(pwd)/build.sh:/workspace/build.sh:ro" \
             -v "$(pwd)/output-$ARCH:/output" \
             alpine:latest \
             /workspace/build.sh "$TOOL" "$ARCH"
@@ -195,18 +216,31 @@ jobs:
           echo "Built packages:"
           find packages -name '*.apk' -exec ls -lh {} \;
 
+      - name: Install GitHub CLI
+        run: |
+          # install gh so we can upload to the release
+          type gh >/dev/null 2>&1 || {
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg &&
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg &&
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null &&
+            sudo apt update && sudo apt install -y gh
+          }
+
       - name: Upload to release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TOOL="${{ inputs.tool }}"
           VERSION="${{ inputs.version }}"
           REPO="${{ inputs.repository }}"
-          RELEASE_TAG="${{ steps.release.outputs.RELEASE_TAG || format('v{0}', inputs.version) }}"
+          RELEASE_TAG="${{ needs.build-alpine.outputs.release_tag }}"
 
           echo "Uploading Alpine packages to $REPO release $RELEASE_TAG"
 
-          # Upload all .apk files to the tool's repo release
-          find packages -name '*.apk' -exec gh release upload "$RELEASE_TAG" {} --repo "$REPO" --clobber \;
+          # Authenticate gh using the token
+          echo "$GH_TOKEN" | gh auth login --with-token
+
+          # Upload all .apk files to the repo release (clobber existing)
+          find packages -name '*.apk' -print0 | xargs -0 -I{} gh release upload "$RELEASE_TAG" "{}" --repo "$REPO" --clobber
 
           echo "✅ Alpine packages uploaded successfully to $REPO/releases/tag/$RELEASE_TAG"
