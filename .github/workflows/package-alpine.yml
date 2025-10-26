@@ -159,6 +159,7 @@ jobs:
           }
           EOF
             echo "Generated APKBUILD for $ARCH with checksum"
+            cat APKBUILD
           fi
 
           # Create output directory
