@@ -131,58 +131,50 @@ jobs:
           # Detect binaries from Homebrew formula
           BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
 
-          # Create install commands for Alpine
-          INSTALL_CMDS=""
-          for binary in $BINARIES; do
-            INSTALL_CMDS="${INSTALL_CMDS}	install -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\"
-          "
-          done
-
           # Get SHA512 hashes
           HASH_X64="${{ steps.alpine_hashes.outputs.HASH_LINUX_MUSL_X64 }}"
           HASH_ARM64="${{ steps.alpine_hashes.outputs.HASH_LINUX_MUSL_ARM64 }}"
 
-          cat > "alpine/APKBUILD.$TOOL" << 'EOF'
+          # Generate APKBUILD file
+          cat > "alpine/APKBUILD.$TOOL" << EOF
           # Contributor: CaddyGlow <github.com/CaddyGlow>
           # Maintainer: CaddyGlow <github.com/CaddyGlow>
-          pkgname=TOOL_PLACEHOLDER
-          pkgver=VERSION_PLACEHOLDER
+          pkgname=$TOOL
+          pkgver=$VERSION
           pkgrel=0
-          pkgdesc="Tool from REPO_PLACEHOLDER"
-          url="https://github.com/REPO_PLACEHOLDER"
+          pkgdesc="Tool from $REPO"
+          url="https://github.com/$REPO"
           arch="x86_64 aarch64"
           license="MIT"
           options="!check" # No test suite in upstream
           source="
-          	$pkgname-$pkgver-x86_64.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz
-          	$pkgname-$pkgver-aarch64.tar.gz::https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz
+          	\$pkgname-\$pkgver-x86_64.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-x86_64-unknown-linux-musl.tar.gz
+          	\$pkgname-\$pkgver-aarch64.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-aarch64-unknown-linux-musl.tar.gz
           "
 
-          case "$CARCH" in
+          case "\$CARCH" in
           	x86_64)
-          		sha512sums="HASH_X64_PLACEHOLDER
+          		sha512sums="$HASH_X64
           SKIP"
           		;;
           	aarch64)
           		sha512sums="SKIP
-          HASH_ARM64_PLACEHOLDER"
+          $HASH_ARM64"
           		;;
           esac
 
-          builddir="$srcdir"
+          builddir="\$srcdir"
 
           package() {
-          INSTALL_PLACEHOLDER
-          }
           EOF
 
-          # Replace placeholders
-          sed -i "s/TOOL_PLACEHOLDER/$TOOL/g" "alpine/APKBUILD.$TOOL"
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" "alpine/APKBUILD.$TOOL"
-          sed -i "s|REPO_PLACEHOLDER|$REPO|g" "alpine/APKBUILD.$TOOL"
-          sed -i "s|HASH_X64_PLACEHOLDER|$HASH_X64|g" "alpine/APKBUILD.$TOOL"
-          sed -i "s|HASH_ARM64_PLACEHOLDER|$HASH_ARM64|g" "alpine/APKBUILD.$TOOL"
-          sed -i "s|INSTALL_PLACEHOLDER|$INSTALL_CMDS|g" "alpine/APKBUILD.$TOOL"
+          # Add install commands for each binary
+          for binary in $BINARIES; do
+            echo "	install -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\"" >> "alpine/APKBUILD.$TOOL"
+          done
+
+          # Close the package function
+          echo "}" >> "alpine/APKBUILD.$TOOL"
 
           echo "Generated alpine/APKBUILD.$TOOL"
           cat "alpine/APKBUILD.$TOOL"
@@ -197,37 +189,30 @@ jobs:
           # Detect binaries from Homebrew formula
           BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
 
-          # Create install commands for Termux
-          INSTALL_CMDS=""
-          for binary in $BINARIES; do
-            INSTALL_CMDS="${INSTALL_CMDS}	install -Dm700 -t \"\${TERMUX_PREFIX}/bin\" $binary
-          "
-          done
-
           # Get SHA256 hash
           HASH_ANDROID="${{ steps.termux_hashes.outputs.HASH_ANDROID_ARM64 }}"
 
-          cat > "termux/build.sh.$TOOL" << 'EOF'
-          TERMUX_PKG_HOMEPAGE=https://github.com/REPO_PLACEHOLDER
-          TERMUX_PKG_DESCRIPTION="Tool from REPO_PLACEHOLDER"
+          # Generate Termux build.sh file
+          cat > "termux/build.sh.$TOOL" << EOF
+          TERMUX_PKG_HOMEPAGE=https://github.com/$REPO
+          TERMUX_PKG_DESCRIPTION="Tool from $REPO"
           TERMUX_PKG_LICENSE="MIT"
-          TERMUX_PKG_VERSION=VERSION_PLACEHOLDER
-          TERMUX_PKG_SRCURL=https://github.com/REPO_PLACEHOLDER/releases/download/v${TERMUX_PKG_VERSION}/TOOL_PLACEHOLDER-aarch64-linux-android.tar.gz
-          TERMUX_PKG_SHA256=HASH_PLACEHOLDER
+          TERMUX_PKG_VERSION=$VERSION
+          TERMUX_PKG_SRCURL=https://github.com/$REPO/releases/download/v\${TERMUX_PKG_VERSION}/$TOOL-aarch64-linux-android.tar.gz
+          TERMUX_PKG_SHA256=$HASH_ANDROID
           TERMUX_PKG_BUILD_IN_SRC=true
           TERMUX_PKG_PLATFORM_INDEPENDENT=false
 
           termux_step_make_install() {
-          INSTALL_PLACEHOLDER
-          }
           EOF
 
-          # Replace placeholders
-          sed -i "s/TOOL_PLACEHOLDER/$TOOL/g" "termux/build.sh.$TOOL"
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" "termux/build.sh.$TOOL"
-          sed -i "s|REPO_PLACEHOLDER|$REPO|g" "termux/build.sh.$TOOL"
-          sed -i "s|HASH_PLACEHOLDER|$HASH_ANDROID|g" "termux/build.sh.$TOOL"
-          sed -i "s|INSTALL_PLACEHOLDER|$INSTALL_CMDS|g" "termux/build.sh.$TOOL"
+          # Add install commands for each binary
+          for binary in $BINARIES; do
+            echo "	install -Dm700 -t \"\${TERMUX_PREFIX}/bin\" $binary" >> "termux/build.sh.$TOOL"
+          done
+
+          # Close the function
+          echo "}" >> "termux/build.sh.$TOOL"
 
           echo "Generated termux/build.sh.$TOOL"
           cat "termux/build.sh.$TOOL"
