@@ -79,6 +79,13 @@ jobs:
       - name: Setup PyOxidizer
         uses: ./.homebrew-packages/.github/actions/setup-pyoxidizer
 
+      - name: Cache Rust/Cargo for PyOxidizer
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pyoxidizer-${{ matrix.target }}
+          cache-targets: true
+          cache-on-failure: true
+
       - name: Build and package binary
         uses: ./.homebrew-packages/.github/actions/package-python-binary
         with:
