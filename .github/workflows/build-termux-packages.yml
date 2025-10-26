@@ -105,6 +105,10 @@ jobs:
 
           echo "Creating Termux package for $TOOL v$VERSION"
 
+          # Install required tools
+          apt-get update -qq
+          apt-get install -y -qq wget tar
+
           # Get package info from build.sh
           source /workspace/termux/build.sh.$TOOL
 
@@ -114,7 +118,7 @@ jobs:
           mkdir -p "$PKGDIR/DEBIAN"
 
           # Download the binary
-          wget -O "$PKGDIR/data/data/com.termux/files/usr/bin/$TOOL" \
+          wget -q -O "$PKGDIR/data/data/com.termux/files/usr/bin/$TOOL" \
             "${TERMUX_PKG_SRCURL}"
 
           # Extract if it's a tarball
