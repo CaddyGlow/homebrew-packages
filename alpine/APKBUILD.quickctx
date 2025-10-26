@@ -28,4 +28,5 @@ builddir="$srcdir"
 
 package() {
 	install -Dm755 "$builddir/quickctx" "$pkgdir/usr/bin/quickctx"
+	install -Dm755 "$builddir/quickctx-analyze" "$pkgdir/usr/bin/quickctx-analyze"
 }

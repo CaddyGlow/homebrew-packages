@@ -5,7 +5,8 @@
       "description": "Tool from CaddyGlow/quickctx",
       "repository": "CaddyGlow/quickctx",
       "binaries": [
-        "quickctx"
+        "quickctx",
+        "quickctx-analyze"
       ],
       "install_url": "https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx-aarch64-linux-android.tar.gz",
       "sha256": "083faa33600528544bb3466d28b4d79a31ce03fde6547ebf49283d880ad6f5fa"
@@ -32,5 +33,5 @@
     }
   },
   "install_script": "https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh",
-  "last_updated": "2025-10-26T08:08:05Z"
+  "last_updated": "2025-10-26T08:10:17Z"
 }
