@@ -47,14 +47,14 @@ apk add --allow-untrusted ~/packages/*/$(uname -m)/quickctx-*.apk
 
 ## Termux (Android)
 
-Termux packages can be installed directly from pre-built binaries:
+One-command installation for Termux:
 
 ```bash
-# Quick install (direct binary)
-wget https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx-aarch64-linux-android.tar.gz
-tar -xzf quickctx-aarch64-linux-android.tar.gz
-chmod +x quickctx
-mv quickctx $PREFIX/bin/
+# Install any tool (auto-detects latest version)
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- quickctx
+
+# Or install specific version
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- quickctx 0.1.4
 ```
 
 📖 **[Complete Termux Setup Guide](TERMUX_SETUP.md)** - Includes all installation methods

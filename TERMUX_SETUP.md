@@ -107,68 +107,59 @@ wget https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx_0.1
 pkg install ./quickctx_0.1.4_aarch64.deb
 ```
 
-### Option 4: Install Pre-built Binaries (Easiest)
+### Option 4: Automated Install Script (Easiest) ⭐
 
-Since the packages just download pre-built binaries, users can install directly:
+Use the official CaddyGlow installer for one-command installation:
 
 ```bash
-# Create installation directory if needed
-mkdir -p ~/.local/bin
+# One-liner install (latest version)
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- quickctx
 
+# Install specific version
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- quickctx 0.1.4
+
+# Install all tools
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- quickctx
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- shelltape
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/install-termux.sh | bash -s -- ghdl
+```
+
+The installer automatically:
+- Detects the latest version (or uses specified version)
+- Downloads and verifies the binary
+- Extracts and installs to `$PREFIX/bin`
+- Makes binaries executable
+- Verifies installation
+
+### Option 5: Install Pre-built Binaries Manually
+
+If you prefer manual installation:
+
+```bash
 # Download and extract (example: quickctx v0.1.4)
 wget https://github.com/CaddyGlow/quickctx/releases/download/v0.1.4/quickctx-aarch64-linux-android.tar.gz
 tar -xzf quickctx-aarch64-linux-android.tar.gz
 chmod +x quickctx quickctx-analyze
-mv quickctx quickctx-analyze ~/.local/bin/
-
-# Add to PATH if not already
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+mv quickctx quickctx-analyze $PREFIX/bin/
 
 # Verify installation
 quickctx --version
 ```
 
-### Quick Install Script
+### Discover Available Tools
 
-Create a simple install script for users:
+View all available tools and versions:
 
 ```bash
-#!/data/data/com.termux/files/usr/bin/bash
-# install-caddyglow.sh
+# Download manifest
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/termux-manifest.json
 
-TOOL=$1
-VERSION=$2
+# Pretty print with jq
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/termux-manifest.json | jq .
 
-if [ -z "$TOOL" ] || [ -z "$VERSION" ]; then
-    echo "Usage: $0 <tool> <version>"
-    echo "Example: $0 quickctx 0.1.4"
-    exit 1
-fi
-
-REPO="CaddyGlow/$TOOL"
-URL="https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-linux-android.tar.gz"
-
-echo "Installing $TOOL v$VERSION..."
-wget -O /tmp/$TOOL.tar.gz "$URL"
-tar -xzf /tmp/$TOOL.tar.gz -C /tmp/
-chmod +x /tmp/$TOOL
-mv /tmp/$TOOL $PREFIX/bin/
-rm /tmp/$TOOL.tar.gz
-
-echo "✓ $TOOL installed successfully!"
-$TOOL --version
-```
-
-Usage:
-```bash
-# Make script executable
-chmod +x install-caddyglow.sh
-
-# Install any tool
-./install-caddyglow.sh quickctx 0.1.4
-./install-caddyglow.sh shelltape 0.1.4
-./install-caddyglow.sh ghdl 0.1.3
+# List just tool names and versions
+curl -fsSL https://raw.githubusercontent.com/CaddyGlow/homebrew-packages/main/termux-manifest.json | \
+  jq -r '.tools | to_entries[] | "\(.key): \(.value.version)"'
 ```
 
 ## Verifying Installation

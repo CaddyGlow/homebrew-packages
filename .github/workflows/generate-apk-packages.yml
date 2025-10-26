@@ -217,6 +217,49 @@ jobs:
           echo "Generated termux/build.sh.$TOOL"
           cat "termux/build.sh.$TOOL"
 
+      - name: Update Termux manifest
+        if: steps.termux_hashes.outputs.TERMUX_FOUND != '0'
+        run: |
+          TOOL="${{ steps.info.outputs.TOOL }}"
+          VERSION="${{ steps.info.outputs.VERSION }}"
+          REPO="${{ steps.info.outputs.REPO }}"
+          HASH_ANDROID="${{ steps.termux_hashes.outputs.HASH_ANDROID_ARM64 }}"
+
+          # Detect binaries from Homebrew formula
+          BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+
+          # Get tool description from Homebrew formula
+          DESCRIPTION=$(grep -oP 'desc "\K[^"]+' "Formula/$TOOL.rb" 2>/dev/null || echo "Tool from $REPO")
+
+          # Convert binaries to JSON array
+          BINARIES_JSON=$(echo "$BINARIES" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          # Update manifest with jq
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq --arg tool "$TOOL" \
+             --arg version "$VERSION" \
+             --arg desc "$DESCRIPTION" \
+             --arg repo "$REPO" \
+             --argjson bins "$BINARIES_JSON" \
+             --arg url "https://github.com/$REPO/releases/download/v$VERSION/$TOOL-aarch64-linux-android.tar.gz" \
+             --arg sha "$HASH_ANDROID" \
+             --arg timestamp "$TIMESTAMP" \
+             '.tools[$tool] = {
+                version: $version,
+                description: $desc,
+                repository: $repo,
+                binaries: $bins,
+                install_url: $url,
+                sha256: $sha
+              } | .last_updated = $timestamp' \
+             termux-manifest.json > termux-manifest.json.tmp
+
+          mv termux-manifest.json.tmp termux-manifest.json
+
+          echo "Updated termux-manifest.json"
+          cat termux-manifest.json
+
       - name: Commit and push
         run: |
           TOOL="${{ steps.info.outputs.TOOL }}"
@@ -228,6 +271,7 @@ jobs:
           # Add files that exist
           [ -f "alpine/APKBUILD.$TOOL" ] && git add "alpine/APKBUILD.$TOOL"
           [ -f "termux/build.sh.$TOOL" ] && git add "termux/build.sh.$TOOL"
+          [ -f "termux-manifest.json" ] && git add "termux-manifest.json"
 
           if git diff --staged --quiet; then
             echo "No changes to commit"
