@@ -68,39 +68,47 @@ cp ~/.abuild/*.rsa.pub alpine-repo/caddyglow.rsa.pub
 
 ## For End Users: Installing Packages
 
-### Add the CaddyGlow Alpine Repository
+### Method 1: Download Pre-built Packages (Easiest) ⭐
+
+Pre-built Alpine packages are available as GitHub release assets:
 
 ```bash
-# Download and trust the signing key
-wget -O /etc/apk/keys/caddyglow.rsa.pub \
-  https://caddyglow.github.io/alpine-repo/caddyglow.rsa.pub
+# Find latest Alpine packages release
+# Visit: https://github.com/CaddyGlow/homebrew-packages/releases
 
-# Add repository to sources
-echo "https://caddyglow.github.io/alpine-repo/$(uname -m)" \
-  >> /etc/apk/repositories
+# Download package for your architecture
+wget https://github.com/CaddyGlow/homebrew-packages/releases/download/alpine-packages-v20251026/quickctx-0.1.4-r0.apk
 
-# Update package index
-apk update
-```
+# Install (as root)
+apk add --allow-untrusted quickctx-0.1.4-r0.apk
 
-### Install Packages
-
-```bash
-# Install any CaddyGlow tool
-apk add quickctx
-apk add shelltape
-apk add ghdl
-
-# Or install all at once
-apk add quickctx shelltape ghdl
-```
-
-### Verify Installation
-
-```bash
+# Verify installation
 quickctx --version
-shelltape --version
-ghdl --version
+```
+
+**Available architectures:**
+- x86_64
+- aarch64
+
+### Method 2: Build from APKBUILD
+
+If you prefer to build packages yourself:
+
+```bash
+# Install build tools
+apk add alpine-sdk
+
+# Clone package repository
+git clone https://github.com/CaddyGlow/homebrew-packages.git
+cd homebrew-packages/alpine
+
+# Build a specific package
+abuild-keygen -a -i  # First time only
+cp APKBUILD.quickctx APKBUILD
+abuild -r
+
+# Install (allow untrusted since it's self-built)
+apk add --allow-untrusted ~/packages/*/$(uname -m)/quickctx-*.apk
 ```
 
 ## Manual Installation (Without Repository)
