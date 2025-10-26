@@ -129,46 +129,27 @@ jobs:
           if [ -f "homebrew-packages/alpine/APKBUILD.$TOOL" ]; then
             cp "homebrew-packages/alpine/APKBUILD.$TOOL" APKBUILD
           else
-            # Generate APKBUILD with case statement for multi-arch support
-            cat > APKBUILD << 'EOF'
+            # Generate architecture-specific APKBUILD
+            cat > APKBUILD << EOF
           # Contributor: CaddyGlow <caddyglow@pm.me>
           # Maintainer: CaddyGlow <caddyglow@pm.me>
-          pkgname=TOOL_PLACEHOLDER
-          pkgver=VERSION_PLACEHOLDER
+          pkgname=$TOOL
+          pkgver=$VERSION
           pkgrel=0
-          pkgdesc="Tool from REPO_PLACEHOLDER"
-          url="https://github.com/REPO_PLACEHOLDER"
-          arch="x86_64 aarch64"
+          pkgdesc="Tool from $REPO"
+          url="https://github.com/$REPO"
+          arch="$ARCH"
           license="MIT"
-          options="!check !strip"
-
-          case "$CARCH" in
-          	x86_64)
-          		source="https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-x86_64-unknown-linux-musl.tar.gz"
-          		;;
-          	aarch64)
-          		source="https://github.com/REPO_PLACEHOLDER/releases/download/v$pkgver/$pkgname-aarch64-unknown-linux-musl.tar.gz"
-          		;;
-          esac
+          options="!check"
+          source="https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
           sha512sums="SKIP"
 
-          builddir="$srcdir"
+          builddir="\$srcdir"
 
           package() {
-          BINARIES_PLACEHOLDER
+          $(for binary in $BINARIES; do echo "\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\""; done)
           }
           EOF
-            # Replace placeholders
-            sed -i "s|TOOL_PLACEHOLDER|$TOOL|g" APKBUILD
-            sed -i "s|VERSION_PLACEHOLDER|$VERSION|g" APKBUILD
-            sed -i "s|REPO_PLACEHOLDER|$REPO|g" APKBUILD
-
-            # Generate install commands for binaries
-            INSTALL_CMDS=""
-            for binary in $BINARIES; do
-              INSTALL_CMDS="${INSTALL_CMDS}\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\"\n"
-            done
-            sed -i "s|BINARIES_PLACEHOLDER|$INSTALL_CMDS|g" APKBUILD
           fi
 
           # Create output directory
