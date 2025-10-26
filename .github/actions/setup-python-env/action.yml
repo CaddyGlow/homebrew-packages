@@ -1,0 +1,48 @@
+name: Setup Python Environment
+description: Sets up Python, uv, and project dependencies
+
+inputs:
+  python_version:
+    description: 'Python version to install'
+    required: false
+    default: '3.12'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python ${{ inputs.python_version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install uv
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Get uv cache dir
+      id: uv-cache
+      shell: bash
+      run: |
+        echo "dir=$(uv cache dir)" >> $GITHUB_OUTPUT
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.uv-cache.outputs.dir }}
+        key: uv-${{ runner.os }}-python-${{ inputs.python_version }}-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+        restore-keys: |
+          uv-${{ runner.os }}-python-${{ inputs.python_version }}-
+          uv-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ -f "pyproject.toml" ]; then
+          uv sync
+        elif [ -f "requirements.txt" ]; then
+          uv pip install -r requirements.txt
+        else
+          echo "::warning::No pyproject.toml or requirements.txt found"
+        fi

@@ -1,0 +1,72 @@
+name: Python Release
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (tag) for the release'
+        required: false
+        type: string
+        default: ''
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      generate_notes:
+        description: 'Auto-generate release notes'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Determine tag name
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.ref }}" ]; then
+            TAG="${{ inputs.ref }}"
+            TAG="${TAG#refs/tags/}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate tag
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::warning::Tag '$TAG' doesn't look like a version tag (e.g., v1.0.0)"
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: artifacts/**/*
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: ${{ inputs.generate_notes }}
+          make_latest: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

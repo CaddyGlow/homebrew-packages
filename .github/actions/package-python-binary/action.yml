@@ -1,0 +1,104 @@
+name: Package Python Binary
+description: Builds standalone binary with PyOxidizer and creates release archive
+
+inputs:
+  binary_name:
+    description: 'Name of the binary to build'
+    required: true
+  target:
+    description: 'Target triple'
+    required: true
+  archive_format:
+    description: 'Archive format: tar.gz or zip'
+    required: true
+  exe_suffix:
+    description: 'Executable suffix (.exe for Windows, empty for Unix)'
+    required: false
+    default: ''
+  assets:
+    description: 'JSON array of asset paths to include'
+    required: false
+    default: '[]'
+
+runs:
+  using: composite
+  steps:
+    - name: Build with PyOxidizer
+      shell: bash
+      run: |
+        pyoxidizer build --release --target-triple ${{ inputs.target }}
+
+    - name: Package (Windows)
+      if: inputs.archive_format == 'zip'
+      shell: pwsh
+      run: |
+        $BINARY_NAME = "${{ inputs.binary_name }}"
+        $TARGET = "${{ inputs.target }}"
+        $ASSETS = '${{ inputs.assets }}' | ConvertFrom-Json
+
+        New-Item -ItemType Directory -Force -Path dist
+
+        # Find and copy the built binary
+        $BUILD_DIR = "build/$TARGET/release/install"
+        if (Test-Path $BUILD_DIR) {
+          Copy-Item "$BUILD_DIR/*${{ inputs.exe_suffix }}" "dist/$BINARY_NAME${{ inputs.exe_suffix }}"
+        } else {
+          Write-Error "Build directory not found: $BUILD_DIR"
+          exit 1
+        }
+
+        # Copy assets if any
+        foreach ($ASSET in $ASSETS) {
+          if (Test-Path $ASSET) {
+            Copy-Item $ASSET -Destination dist -Recurse
+          }
+        }
+
+        $ARCHIVE_NAME = "$BINARY_NAME-$TARGET.zip"
+        $itemsToCompress = Get-ChildItem -Path dist -File
+        Compress-Archive -Path $itemsToCompress.FullName -DestinationPath "dist/$ARCHIVE_NAME"
+
+        Write-Output "Created archive: $ARCHIVE_NAME"
+        Get-ChildItem dist
+
+    - name: Package (Unix)
+      if: inputs.archive_format != 'zip'
+      shell: bash
+      run: |
+        mkdir -p dist
+        BINARY_NAME="${{ inputs.binary_name }}"
+        TARGET="${{ inputs.target }}"
+        ASSETS='${{ inputs.assets }}'
+
+        # Find and copy the built binary
+        BUILD_DIR="build/$TARGET/release/install"
+        if [ -d "$BUILD_DIR" ]; then
+          cp "$BUILD_DIR/"*${{ inputs.exe_suffix }} "dist/$BINARY_NAME${{ inputs.exe_suffix }}"
+          chmod +x "dist/$BINARY_NAME${{ inputs.exe_suffix }}"
+        else
+          echo "::error::Build directory not found: $BUILD_DIR"
+          exit 1
+        fi
+
+        # Copy assets if any
+        if [ "$ASSETS" != "[]" ]; then
+          echo "$ASSETS" | jq -r '.[]' | while read -r ASSET; do
+            if [ -e "$ASSET" ]; then
+              cp -r "$ASSET" dist/
+            fi
+          done
+        fi
+
+        # Create archive
+        cd dist
+        ARCHIVE_NAME="$BINARY_NAME-$TARGET.tar.gz"
+        tar czf "$ARCHIVE_NAME" *
+
+        # Move archive up and clean
+        mv "$ARCHIVE_NAME" ..
+        cd ..
+        rm -rf dist/*
+        mv "$ARCHIVE_NAME" dist/
+
+        echo "Created archive: $ARCHIVE_NAME"
+        ls -lh dist/

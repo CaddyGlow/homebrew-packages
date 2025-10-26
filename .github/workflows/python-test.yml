@@ -1,0 +1,65 @@
+name: Python Test
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to checkout and test'
+        required: false
+        type: string
+        default: ''
+      python_version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.12'
+      skip_formatting:
+        description: 'Skip formatting check'
+        required: false
+        type: boolean
+        default: false
+      skip_linting:
+        description: 'Skip linting check'
+        required: false
+        type: boolean
+        default: false
+      skip_typecheck:
+        description: 'Skip type checking'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Checkout homebrew-packages for composite actions
+        uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          ref: main
+          path: .homebrew-packages
+
+      - name: Setup Python environment
+        uses: ./.homebrew-packages/.github/actions/setup-python-env
+        with:
+          python_version: ${{ inputs.python_version }}
+
+      - name: Check formatting with ruff
+        if: ${{ !inputs.skip_formatting }}
+        run: uv run ruff format --check .
+
+      - name: Lint with ruff
+        if: ${{ !inputs.skip_linting }}
+        run: uv run ruff check .
+
+      - name: Type check with mypy
+        if: ${{ !inputs.skip_typecheck }}
+        run: uv run mypy .
+
+      - name: Run tests with pytest
+        run: uv run pytest -v

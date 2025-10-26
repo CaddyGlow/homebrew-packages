@@ -1,0 +1,25 @@
+name: Setup PyOxidizer
+description: Installs PyOxidizer for building standalone Python binaries
+
+runs:
+  using: composite
+  steps:
+    - name: Cache PyOxidizer
+      id: cache-pyoxidizer
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/pyoxidizer
+          ~/.cargo/bin/pyoxidizer.exe
+        key: pyoxidizer-${{ runner.os }}-0.24.0
+
+    - name: Install PyOxidizer
+      if: steps.cache-pyoxidizer.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cargo install --locked pyoxidizer
+
+    - name: Verify PyOxidizer installation
+      shell: bash
+      run: |
+        pyoxidizer --version

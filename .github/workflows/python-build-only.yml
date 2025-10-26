@@ -1,0 +1,95 @@
+name: Python Build Only (No Tests, No Release)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to checkout and build'
+        required: false
+        type: string
+        default: ''
+      binary_name:
+        description: 'Name of the binary to build'
+        required: true
+        type: string
+      assets:
+        description: 'JSON array of asset paths to include in archives'
+        required: false
+        type: string
+        default: '[]'
+      target_preset:
+        description: 'Target preset: all, windows, linux, macos'
+        required: false
+        type: string
+        default: 'all'
+      custom_targets:
+        description: 'Custom JSON array of targets (overrides preset)'
+        required: false
+        type: string
+        default: ''
+      python_version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.12'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          ref: main
+
+      - name: Load target matrix
+        id: targets
+        uses: ./.github/actions/load-python-target-matrix
+        with:
+          preset: ${{ inputs.target_preset }}
+          custom_targets: ${{ inputs.custom_targets }}
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Checkout homebrew-packages for composite actions
+        uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          ref: main
+          path: .homebrew-packages
+
+      - name: Setup Python environment
+        uses: ./.homebrew-packages/.github/actions/setup-python-env
+        with:
+          python_version: ${{ inputs.python_version }}
+
+      - name: Setup PyOxidizer
+        uses: ./.homebrew-packages/.github/actions/setup-pyoxidizer
+
+      - name: Build and package binary
+        uses: ./.homebrew-packages/.github/actions/package-python-binary
+        with:
+          binary_name: ${{ inputs.binary_name }}
+          target: ${{ matrix.target }}
+          archive_format: ${{ matrix.archive }}
+          exe_suffix: ${{ matrix.exe_suffix }}
+          assets: ${{ inputs.assets }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary_name }}-${{ matrix.target }}
+          path: dist/*

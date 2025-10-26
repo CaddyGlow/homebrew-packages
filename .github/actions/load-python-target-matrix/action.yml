@@ -1,0 +1,41 @@
+name: Load Python Target Matrix
+description: Loads Python build target matrix from presets or custom JSON
+
+inputs:
+  preset:
+    description: 'Target preset: all, windows, linux, macos'
+    required: false
+    default: 'all'
+  custom_targets:
+    description: 'Custom JSON array of targets (overrides preset)'
+    required: false
+    default: ''
+
+outputs:
+  matrix:
+    description: 'JSON array of build targets for strategy.matrix'
+    value: ${{ steps.load.outputs.matrix }}
+
+runs:
+  using: composite
+  steps:
+    - name: Load target matrix
+      id: load
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.custom_targets }}" ]; then
+          echo "Using custom targets"
+          echo "matrix=${{ inputs.custom_targets }}" >> $GITHUB_OUTPUT
+        else
+          PRESET="${{ inputs.preset }}"
+          TARGETS_FILE="${{ github.action_path }}/targets/${PRESET}.json"
+
+          if [ ! -f "$TARGETS_FILE" ]; then
+            echo "::error::Invalid preset: ${PRESET}. Available: all, windows, linux, macos"
+            exit 1
+          fi
+
+          echo "Loading preset: ${PRESET}"
+          MATRIX=$(cat "$TARGETS_FILE" | jq -c .)
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+        fi
