@@ -1,0 +1,51 @@
+# Example workflow for tool repositories (e.g., quickctx, gdl, tapeshell)
+# Copy this file to your tool repository as .github/workflows/packages.yml
+
+name: Build Distribution Packages
+
+on:
+  # Trigger when a release is published
+  release:
+    types: [published]
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (without v prefix, e.g., 0.1.4)'
+        required: true
+        type: string
+
+jobs:
+  # Build Alpine Linux packages (.apk)
+  alpine:
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-alpine.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: quickctx  # Change this to your tool name
+      version: ${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
+
+  # Build Debian/Ubuntu packages (.deb for amd64 and arm64)
+  debian:
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-debian.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: quickctx  # Change this to your tool name
+      version: ${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
+
+  # Build Termux/Android packages (.deb for aarch64)
+  termux:
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-termux.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: quickctx  # Change this to your tool name
+      version: ${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}

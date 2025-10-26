@@ -1,0 +1,205 @@
+name: Build Alpine Packages (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version without v prefix (e.g., 0.1.4)'
+        required: true
+        type: string
+      repository:
+        description: 'Repository in format owner/repo (e.g., CaddyGlow/quickctx)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Release tag to upload to (default: v{version})'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "alpine-build-${{ inputs.tool }}-${{ inputs.version }}"
+  cancel-in-progress: false
+
+jobs:
+  build-alpine:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+
+    steps:
+      - name: Checkout homebrew-packages for APKBUILD templates
+        uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          path: homebrew-packages
+
+      - name: Checkout tool repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          path: tool-repo
+
+      - name: Set release tag
+        id: release
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          else
+            RELEASE_TAG="v${{ inputs.version }}"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Using release tag: $RELEASE_TAG"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'aarch64'
+
+      - name: Build Alpine package in Docker
+        run: |
+          TOOL="${{ inputs.tool }}"
+          VERSION="${{ inputs.version }}"
+          REPO="${{ inputs.repository }}"
+          ARCH="${{ matrix.arch }}"
+
+          echo "Building Alpine package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Repository: $REPO"
+          echo "  Architecture: $ARCH"
+
+          # Determine Docker platform
+          if [ "$ARCH" = "aarch64" ]; then
+            PLATFORM="linux/arm64"
+          else
+            PLATFORM="linux/amd64"
+          fi
+
+          # Detect binaries from Homebrew formula if available
+          if [ -f "homebrew-packages/Formula/$TOOL.rb" ]; then
+            BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "homebrew-packages/Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+          else
+            BINARIES="$TOOL"
+          fi
+
+          echo "Binaries to package: $BINARIES"
+
+          # Create build script
+          cat > build.sh << 'BUILDSCRIPT'
+          #!/bin/sh
+          set -e
+
+          # Install dependencies
+          apk add --no-cache alpine-sdk sudo
+
+          # Setup builder user
+          adduser -D builder
+          addgroup builder abuild
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+          # Generate signing key
+          su builder -c "abuild-keygen -a -i -n"
+
+          # Build package
+          TOOL=$1
+          ARCH=$2
+          su builder -c "
+            mkdir -p ~/build
+            cp /workspace/APKBUILD ~/build/APKBUILD
+            cd ~/build
+            abuild checksum
+            abuild -r
+          "
+
+          # Copy built package to output
+          mkdir -p /output
+          find /home/builder/packages -name '*.apk' -exec cp {} /output/ \;
+          BUILDSCRIPT
+
+          chmod +x build.sh
+
+          # Download APKBUILD from homebrew-packages or generate it
+          if [ -f "homebrew-packages/alpine/APKBUILD.$TOOL" ]; then
+            cp "homebrew-packages/alpine/APKBUILD.$TOOL" APKBUILD
+          else
+            # Generate minimal APKBUILD
+            cat > APKBUILD << EOF
+          # Contributor: CaddyGlow <caddyglow@pm.me>
+          # Maintainer: CaddyGlow <caddyglow@pm.me>
+          pkgname=$TOOL
+          pkgver=$VERSION
+          pkgrel=0
+          pkgdesc="Tool from $REPO"
+          url="https://github.com/$REPO"
+          arch="$ARCH"
+          license="MIT"
+          options="!check"
+
+          source="\$pkgname-\$pkgver.tar.gz::https://github.com/$REPO/releases/download/v\$pkgver/\$pkgname-$ARCH-unknown-linux-musl.tar.gz"
+
+          builddir="\$srcdir"
+
+          package() {
+          EOF
+            for binary in $BINARIES; do
+              echo "\tinstall -Dm755 \"\$builddir/$binary\" \"\$pkgdir/usr/bin/$binary\"" >> APKBUILD
+            done
+            echo "}" >> APKBUILD
+          fi
+
+          # Create output directory
+          mkdir -p output-$ARCH
+
+          # Run build in Alpine container
+          docker run --rm \
+            --platform $PLATFORM \
+            -v "$(pwd)/APKBUILD:/workspace/APKBUILD" \
+            -v "$(pwd)/build.sh:/workspace/build.sh" \
+            -v "$(pwd)/output-$ARCH:/output" \
+            alpine:latest \
+            /workspace/build.sh "$TOOL" "$ARCH"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-${{ matrix.arch }}-${{ inputs.tool }}
+          path: output-${{ matrix.arch }}/*.apk
+
+  attach-to-release:
+    needs: build-alpine
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: List packages
+        run: |
+          echo "Built packages:"
+          find packages -name '*.apk' -exec ls -lh {} \;
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ inputs.tool }}"
+          VERSION="${{ inputs.version }}"
+          REPO="${{ inputs.repository }}"
+          RELEASE_TAG="${{ steps.release.outputs.RELEASE_TAG || format('v{0}', inputs.version) }}"
+
+          echo "Uploading Alpine packages to $REPO release $RELEASE_TAG"
+
+          # Upload all .apk files to the tool's repo release
+          find packages -name '*.apk' -exec gh release upload "$RELEASE_TAG" {} --repo "$REPO" --clobber \;
+
+          echo "✅ Alpine packages uploaded successfully to $REPO/releases/tag/$RELEASE_TAG"

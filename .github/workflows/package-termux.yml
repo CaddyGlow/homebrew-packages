@@ -1,0 +1,197 @@
+name: Build Termux Packages (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: 'Tool name (e.g., quickctx)'
+        required: true
+        type: string
+      version:
+        description: 'Version without v prefix (e.g., 0.1.4)'
+        required: true
+        type: string
+      repository:
+        description: 'Repository in format owner/repo (e.g., CaddyGlow/quickctx)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Release tag to upload to (default: v{version})'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "termux-build-${{ inputs.tool }}-${{ inputs.version }}"
+  cancel-in-progress: false
+
+jobs:
+  build-termux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout homebrew-packages for metadata
+        uses: actions/checkout@v4
+        with:
+          repository: CaddyGlow/homebrew-packages
+          path: homebrew-packages
+
+      - name: Set release tag
+        id: release
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          else
+            RELEASE_TAG="v${{ inputs.version }}"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Using release tag: $RELEASE_TAG"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Termux package in Docker
+        run: |
+          TOOL="${{ inputs.tool }}"
+          VERSION="${{ inputs.version }}"
+          REPO="${{ inputs.repository }}"
+          RELEASE_TAG="${{ steps.release.outputs.RELEASE_TAG }}"
+
+          echo "Building Termux package:"
+          echo "  Tool: $TOOL"
+          echo "  Version: $VERSION"
+          echo "  Repository: $REPO"
+          echo "  Architecture: aarch64"
+
+          # Get description from Homebrew formula if available
+          if [ -f "homebrew-packages/Formula/$TOOL.rb" ]; then
+            DESCRIPTION=$(grep -oP 'desc "\K[^"]+' "homebrew-packages/Formula/$TOOL.rb" 2>/dev/null || echo "Tool from $REPO")
+            BINARIES=$(grep -oP 'bin\.install "\K[^"]+' "homebrew-packages/Formula/$TOOL.rb" 2>/dev/null | sort -u || echo "$TOOL")
+          else
+            DESCRIPTION="Tool from $REPO"
+            BINARIES="$TOOL"
+          fi
+
+          echo "Description: $DESCRIPTION"
+          echo "Binaries: $BINARIES"
+
+          # Create build script
+          cat > create-termux-deb.sh << 'DEBSCRIPT'
+          #!/bin/bash
+          set -e
+
+          TOOL=$1
+          VERSION=$2
+          REPO=$3
+          DESCRIPTION=$4
+          RELEASE_TAG=$5
+          shift 5
+          BINARIES="$@"
+
+          echo "Creating Termux package for $TOOL v$VERSION"
+
+          # Install required tools
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq wget tar dpkg-dev ca-certificates
+
+          # Create package structure
+          PKGDIR="termux-${TOOL}_${VERSION}"
+          mkdir -p "$PKGDIR/data/data/com.termux/files/usr/bin"
+          mkdir -p "$PKGDIR/DEBIAN"
+
+          # Download and extract the Android tarball from GitHub release
+          DOWNLOAD_URL="https://github.com/$REPO/releases/download/${RELEASE_TAG}/${TOOL}-aarch64-linux-android.tar.gz"
+          echo "Downloading from: $DOWNLOAD_URL"
+
+          wget -q -O /tmp/package.tar.gz "$DOWNLOAD_URL"
+
+          # Extract directly to bin directory
+          tar -xzf /tmp/package.tar.gz -C "$PKGDIR/data/data/com.termux/files/usr/bin"
+
+          # Clean up
+          rm /tmp/package.tar.gz
+
+          # Verify binaries exist
+          echo "Verifying binaries..."
+          for binary in $BINARIES; do
+            if [ -f "$PKGDIR/data/data/com.termux/files/usr/bin/$binary" ]; then
+              echo "  ✓ $binary"
+            else
+              echo "  ✗ $binary (not found)"
+              exit 1
+            fi
+          done
+
+          # Make binaries executable
+          find "$PKGDIR/data/data/com.termux/files/usr/bin" -type f -exec chmod 755 {} \;
+
+          # Create control file
+          cat > "$PKGDIR/DEBIAN/control" << EOF
+          Package: $TOOL
+          Version: $VERSION
+          Architecture: aarch64
+          Maintainer: CaddyGlow <caddyglow@pm.me>
+          Description: $DESCRIPTION
+          Homepage: https://github.com/$REPO
+          EOF
+
+          # Build the .deb package
+          dpkg-deb --build "$PKGDIR" "/output/${TOOL}_${VERSION}_aarch64.deb"
+
+          echo "Package built: /output/${TOOL}_${VERSION}_aarch64.deb"
+          ls -lh /output/
+          DEBSCRIPT
+
+          chmod +x create-termux-deb.sh
+
+          # Create output directory
+          mkdir -p output-termux
+
+          # Run build in Ubuntu container (Termux packages are Debian-based)
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "$(pwd)/create-termux-deb.sh:/workspace/create-termux-deb.sh" \
+            -v "$(pwd)/output-termux:/output" \
+            ubuntu:22.04 \
+            bash /workspace/create-termux-deb.sh "$TOOL" "$VERSION" "$REPO" "$DESCRIPTION" "$RELEASE_TAG" $BINARIES
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-${{ inputs.tool }}
+          path: output-termux/*.deb
+
+  attach-to-release:
+    needs: build-termux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: List packages
+        run: |
+          echo "Built packages:"
+          find packages -name '*.deb' -exec ls -lh {} \;
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOOL="${{ inputs.tool }}"
+          VERSION="${{ inputs.version }}"
+          REPO="${{ inputs.repository }}"
+          RELEASE_TAG="${{ steps.release.outputs.RELEASE_TAG || format('v{0}', inputs.version) }}"
+
+          echo "Uploading Termux packages to $REPO release $RELEASE_TAG"
+
+          # Upload all .deb files to the tool's repo release
+          find packages -name '*.deb' -exec gh release upload "$RELEASE_TAG" {} --repo "$REPO" --clobber \;
+
+          echo "✅ Termux packages uploaded successfully to $REPO/releases/tag/$RELEASE_TAG"
