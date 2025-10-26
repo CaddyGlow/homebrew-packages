@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh release view:*)"
     ],
     "deny": [],
     "ask": []
