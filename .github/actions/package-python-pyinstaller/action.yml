@@ -34,8 +34,16 @@ runs:
         BINARY_NAME="${{ inputs.binary_name }}"
         ENTRY_POINT="${{ inputs.entry_point }}"
 
-        # Convert entry_point format (module:function) to PyInstaller format
+        # Parse entry_point format (module.path:function)
         MODULE=$(echo "$ENTRY_POINT" | cut -d: -f1)
+        FUNCTION=$(echo "$ENTRY_POINT" | cut -d: -f2)
+
+        # Create a temporary entry script for PyInstaller
+        cat > __pyinstaller_entry__.py <<EOF
+        from ${MODULE} import ${FUNCTION}
+        if __name__ == '__main__':
+            ${FUNCTION}()
+        EOF
 
         # Build standalone binary
         uv run pyinstaller \
@@ -45,7 +53,10 @@ runs:
           --hidden-import="$MODULE" \
           --noconfirm \
           --clean \
-          -c "$MODULE"
+          __pyinstaller_entry__.py
+
+        # Clean up temp script
+        rm -f __pyinstaller_entry__.py
 
     - name: Package (Windows)
       if: inputs.archive_format == 'zip'
