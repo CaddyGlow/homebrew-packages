@@ -32,6 +32,10 @@ on:
         required: false
         type: string
         default: '3.11'
+      entry_point:
+        description: 'Python module entry point (e.g., ccproxy.cli:main)'
+        required: true
+        type: string
 
 jobs:
   prepare:
@@ -76,24 +80,14 @@ jobs:
         with:
           python_version: ${{ inputs.python_version }}
 
-      - name: Setup PyOxidizer
-        uses: ./.homebrew-packages/.github/actions/setup-pyoxidizer
-
-      - name: Cache Rust/Cargo for PyOxidizer
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: pyoxidizer-${{ matrix.target }}
-          cache-targets: true
-          cache-on-failure: true
-
       - name: Build and package binary
-        uses: ./.homebrew-packages/.github/actions/package-python-binary
+        uses: ./.homebrew-packages/.github/actions/package-python-pyinstaller
         with:
           binary_name: ${{ inputs.binary_name }}
-          target: ${{ matrix.target }}
           archive_format: ${{ matrix.archive }}
           exe_suffix: ${{ matrix.exe_suffix }}
           assets: ${{ inputs.assets }}
+          entry_point: ${{ inputs.entry_point }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
