@@ -114,13 +114,15 @@ runs:
         # importable package root (e.g. project name 'ccproxy-api' vs package
         # root 'ccproxy'). Read the actual project name from pyproject.toml.
         if [ -f "pyproject.toml" ]; then
-          PROJECT_NAME=$(python3 -c "
-          import re
-          m = re.search(r'^name\s*=\s*[\"\']([^\"\']+)[\"\']', open('pyproject.toml').read(), re.M)
-          print(m.group(1) if m else '')
-          ")
+          # Extract the [project] name from pyproject.toml. We grep for the
+          # line and strip the prefix/suffix ourselves to avoid Python
+          # heredoc indentation issues inside the YAML literal block.
+          PROJECT_NAME=$(grep -E '^name\s*=' pyproject.toml | head -n1 | sed -E 's/^name\s*=\s*["'\'']//; s/["'\'']\s*$//')
           if [ -n "$PROJECT_NAME" ]; then
             PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --copy-metadata ${PROJECT_NAME}"
+            echo "Copying metadata for project: $PROJECT_NAME"
+          else
+            echo "::warning::Could not extract [project] name from pyproject.toml; --copy-metadata skipped"
           fi
         fi
 
