@@ -46,6 +46,11 @@ on:
         required: false
         type: string
         default: ''
+      extras:
+        description: 'Comma-separated list of optional dependency groups to install before freezing (e.g., "plugins-claude,plugins-codex"). Defaults to "all".'
+        required: false
+        type: string
+        default: 'all'
 
 jobs:
   prepare:
@@ -116,6 +121,7 @@ jobs:
           assets: ${{ inputs.assets }}
           entry_point: ${{ inputs.entry_point }}
           extra_smoke_command: ${{ inputs.extra_smoke_command }}
+          extras: ${{ inputs.extras }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

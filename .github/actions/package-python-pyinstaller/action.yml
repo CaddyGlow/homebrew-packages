@@ -29,10 +29,59 @@ inputs:
     description: 'Optional additional smoke command to run via the built binary (e.g., "plugins list")'
     required: false
     default: ''
+  extras:
+    description: 'Comma-separated list of optional dependency groups to install before freezing (e.g., "plugins-claude,plugins-codex"). Defaults to "all" which installs every group declared in pyproject.toml under [project.optional-dependencies]. Pass an empty string to skip installing the project entirely.'
+    required: false
+    default: 'all'
 
 runs:
   using: composite
   steps:
+    - name: Install project and optional extras
+      shell: bash
+      run: |
+        set -euo pipefail
+        EXTRAS="${{ inputs.extras }}"
+        if [ -z "$EXTRAS" ]; then
+          echo "Skipping project install (extras input is empty)"
+          exit 0
+        fi
+        if [ ! -f "pyproject.toml" ]; then
+          echo "::warning::No pyproject.toml found in $PWD; skipping project install"
+          exit 0
+        fi
+        # Convert "all" to a shell glob: get the group names from pyproject.toml
+        # and pass them as one bracket expression so uv/pip picks every group.
+        if [ "$EXTRAS" = "all" ]; then
+          # Extract all keys under [project.optional-dependencies] using a Python one-liner.
+          GROUP_NAMES=$(python3 -c "
+          import re, sys
+          text = open('pyproject.toml').read()
+          m = re.search(r'\[project\.optional-dependencies\](.*?)(?:^\[|\Z)', text, re.S | re.M)
+          if not m:
+              sys.exit(0)
+          for line in m.group(1).splitlines():
+              mm = re.match(r'\s*([A-Za-z0-9_.-]+)\s*=\s*\[', line)
+              if mm:
+                  print(mm.group(1))
+          ")
+          if [ -n "$GROUP_NAMES" ]; then
+            # Build a single bracket expression: [g1,g2,g3]
+            BRACKET=$(printf ',%s' $GROUP_NAMES)
+            BRACKET="[${BRACKET:1}]"
+            echo "Installing project with all extras: $BRACKET"
+            uv pip install ".${BRACKET}"
+          else
+            echo "::warning::[project.optional-dependencies] not found in pyproject.toml; installing project without extras"
+            uv pip install .
+          fi
+        else
+          echo "Installing project with extras: $EXTRAS"
+          # Convert "a,b,c" to "[a,b,c]" so uv treats it as a single selector
+          BRACKET="[${EXTRAS}]"
+          uv pip install ".${BRACKET}"
+        fi
+
     - name: Install PyInstaller
       shell: bash
       run: |
