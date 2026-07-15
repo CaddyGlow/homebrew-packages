@@ -51,6 +51,11 @@ on:
         required: false
         type: string
         default: 'all'
+      homebrew_packages_repo:
+        description: 'Override the homebrew-packages fork used for composite actions. Defaults to the upstream CaddyGlow/homebrew-packages. Callers can point at their own fork to use a patched version of the actions.'
+        required: false
+        type: string
+        default: 'CaddyGlow/homebrew-packages'
 
 jobs:
   prepare:
@@ -101,7 +106,7 @@ jobs:
       - name: Checkout homebrew-packages for composite actions
         uses: actions/checkout@v4
         with:
-          repository: CaddyGlow/homebrew-packages
+          repository: ${{ inputs.homebrew_packages_repo }}
           ref: main
           path: .homebrew-packages
 
