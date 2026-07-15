@@ -101,10 +101,27 @@ runs:
         PACKAGE_ROOT="${MODULE%%.*}"
         PACKAGE_ROOT_PATH="${PACKAGE_ROOT//./\/}"
 
-        PYINSTALLER_FLAGS="--collect-all ${PACKAGE_ROOT} --hidden-import=${MODULE} --copy-metadata ${PACKAGE_ROOT}"
+        PYINSTALLER_FLAGS="--collect-all ${PACKAGE_ROOT} --hidden-import=${MODULE}"
 
         if [ -d "${PACKAGE_ROOT_PATH}/plugins" ]; then
           PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --collect-submodules ${PACKAGE_ROOT}.plugins"
+        fi
+
+        # Preserve package metadata so importlib.metadata.entry_points() can
+        # discover plugins at runtime. PyInstaller has a hook that calls
+        # importlib.metadata.distribution() — it uses the project NAME (from
+        # pyproject.toml's [project] name field), which often differs from the
+        # importable package root (e.g. project name 'ccproxy-api' vs package
+        # root 'ccproxy'). Read the actual project name from pyproject.toml.
+        if [ -f "pyproject.toml" ]; then
+          PROJECT_NAME=$(python3 -c "
+          import re
+          m = re.search(r'^name\s*=\s*[\"\']([^\"\']+)[\"\']', open('pyproject.toml').read(), re.M)
+          print(m.group(1) if m else '')
+          ")
+          if [ -n "$PROJECT_NAME" ]; then
+            PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --copy-metadata ${PROJECT_NAME}"
+          fi
         fi
 
         # Create a temporary entry script for PyInstaller
