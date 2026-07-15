@@ -46,6 +46,16 @@ on:
         required: false
         type: string
         default: ''
+      extras:
+        description: 'Comma-separated list of optional dependency groups to install before freezing (e.g., "plugins-claude,plugins-codex"). Defaults to "all".'
+        required: false
+        type: string
+        default: 'all'
+      homebrew_packages_repo:
+        description: 'Override the homebrew-packages fork used for composite actions. Defaults to the upstream CaddyGlow/homebrew-packages. Callers can point at their own fork to use a patched version of the actions.'
+        required: false
+        type: string
+        default: 'CaddyGlow/homebrew-packages'
 
 jobs:
   prepare:
@@ -96,7 +106,7 @@ jobs:
       - name: Checkout homebrew-packages for composite actions
         uses: actions/checkout@v4
         with:
-          repository: CaddyGlow/homebrew-packages
+          repository: ${{ inputs.homebrew_packages_repo }}
           ref: main
           path: .homebrew-packages
 
@@ -116,6 +126,7 @@ jobs:
           assets: ${{ inputs.assets }}
           entry_point: ${{ inputs.entry_point }}
           extra_smoke_command: ${{ inputs.extra_smoke_command }}
+          extras: ${{ inputs.extras }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

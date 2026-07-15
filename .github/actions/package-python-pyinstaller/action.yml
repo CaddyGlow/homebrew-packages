@@ -29,10 +29,59 @@ inputs:
     description: 'Optional additional smoke command to run via the built binary (e.g., "plugins list")'
     required: false
     default: ''
+  extras:
+    description: 'Comma-separated list of optional dependency groups to install before freezing (e.g., "plugins-claude,plugins-codex"). Defaults to "all" which installs every group declared in pyproject.toml under [project.optional-dependencies]. Pass an empty string to skip installing the project entirely.'
+    required: false
+    default: 'all'
 
 runs:
   using: composite
   steps:
+    - name: Install project and optional extras
+      shell: bash
+      run: |
+        set -euo pipefail
+        EXTRAS="${{ inputs.extras }}"
+        if [ -z "$EXTRAS" ]; then
+          echo "Skipping project install (extras input is empty)"
+          exit 0
+        fi
+        if [ ! -f "pyproject.toml" ]; then
+          echo "::warning::No pyproject.toml found in $PWD; skipping project install"
+          exit 0
+        fi
+        # Convert "all" to a shell glob: get the group names from pyproject.toml
+        # and pass them as one bracket expression so uv/pip picks every group.
+        if [ "$EXTRAS" = "all" ]; then
+          # Extract all keys under [project.optional-dependencies] using a Python one-liner.
+          GROUP_NAMES=$(python3 -c "
+          import re, sys
+          text = open('pyproject.toml').read()
+          m = re.search(r'\[project\.optional-dependencies\](.*?)(?:^\[|\Z)', text, re.S | re.M)
+          if not m:
+              sys.exit(0)
+          for line in m.group(1).splitlines():
+              mm = re.match(r'\s*([A-Za-z0-9_.-]+)\s*=\s*\[', line)
+              if mm:
+                  print(mm.group(1))
+          ")
+          if [ -n "$GROUP_NAMES" ]; then
+            # Build a single bracket expression: [g1,g2,g3]
+            BRACKET=$(printf ',%s' $GROUP_NAMES)
+            BRACKET="[${BRACKET:1}]"
+            echo "Installing project with all extras: $BRACKET"
+            uv pip install ".${BRACKET}"
+          else
+            echo "::warning::[project.optional-dependencies] not found in pyproject.toml; installing project without extras"
+            uv pip install .
+          fi
+        else
+          echo "Installing project with extras: $EXTRAS"
+          # Convert "a,b,c" to "[a,b,c]" so uv treats it as a single selector
+          BRACKET="[${EXTRAS}]"
+          uv pip install ".${BRACKET}"
+        fi
+
     - name: Install PyInstaller
       shell: bash
       run: |
@@ -56,6 +105,25 @@ runs:
 
         if [ -d "${PACKAGE_ROOT_PATH}/plugins" ]; then
           PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --collect-submodules ${PACKAGE_ROOT}.plugins"
+        fi
+
+        # Preserve package metadata so importlib.metadata.entry_points() can
+        # discover plugins at runtime. PyInstaller has a hook that calls
+        # importlib.metadata.distribution() — it uses the project NAME (from
+        # pyproject.toml's [project] name field), which often differs from the
+        # importable package root (e.g. project name 'ccproxy-api' vs package
+        # root 'ccproxy'). Read the actual project name from pyproject.toml.
+        if [ -f "pyproject.toml" ]; then
+          # Extract the [project] name from pyproject.toml. We grep for the
+          # line and strip the prefix/suffix ourselves to avoid Python
+          # heredoc indentation issues inside the YAML literal block.
+          PROJECT_NAME=$(grep -E '^name\s*=' pyproject.toml | head -n1 | sed -E 's/^name\s*=\s*["'\'']//; s/["'\'']\s*$//')
+          if [ -n "$PROJECT_NAME" ]; then
+            PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --copy-metadata ${PROJECT_NAME}"
+            echo "Copying metadata for project: $PROJECT_NAME"
+          else
+            echo "::warning::Could not extract [project] name from pyproject.toml; --copy-metadata skipped"
+          fi
         fi
 
         # Create a temporary entry script for PyInstaller
@@ -89,6 +157,20 @@ runs:
 
         if [ -n "$EXTRA_SMOKE_COMMAND" ]; then
           bash -lc "\"$BINARY_PATH\" $EXTRA_SMOKE_COMMAND"
+        fi
+
+        # Strict smoke check: fail the build if the binary reports zero
+        # discoverable plugins/auth-providers. This catches the case where
+        # pyinstaller collected the source but didn't preserve entry-point
+        # metadata, which would otherwise produce a binary that runs but
+        # has no functionality. (See CaddyGlow/ccproxy-api#75.)
+        if [ -n "$EXTRA_SMOKE_COMMAND" ] && echo "$EXTRA_SMOKE_COMMAND" | grep -qE '(plugins|auth)\s+(list|providers)'; then
+          OUT=$("$BINARY_PATH" $EXTRA_SMOKE_COMMAND 2>&1 || true)
+          if echo "$OUT" | grep -qiE 'no plugins found|no oauth providers found'; then
+            echo "::error::Smoke check failed: binary reports no plugins/providers."
+            echo "$OUT"
+            exit 1
+          fi
         fi
 
     - name: Package (Windows)
