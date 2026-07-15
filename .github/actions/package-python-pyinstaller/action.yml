@@ -101,7 +101,7 @@ runs:
         PACKAGE_ROOT="${MODULE%%.*}"
         PACKAGE_ROOT_PATH="${PACKAGE_ROOT//./\/}"
 
-        PYINSTALLER_FLAGS="--collect-all ${PACKAGE_ROOT} --hidden-import=${MODULE}"
+        PYINSTALLER_FLAGS="--collect-all ${PACKAGE_ROOT} --hidden-import=${MODULE} --copy-metadata ${PACKAGE_ROOT}"
 
         if [ -d "${PACKAGE_ROOT_PATH}/plugins" ]; then
           PYINSTALLER_FLAGS="${PYINSTALLER_FLAGS} --collect-submodules ${PACKAGE_ROOT}.plugins"
@@ -138,6 +138,20 @@ runs:
 
         if [ -n "$EXTRA_SMOKE_COMMAND" ]; then
           bash -lc "\"$BINARY_PATH\" $EXTRA_SMOKE_COMMAND"
+        fi
+
+        # Strict smoke check: fail the build if the binary reports zero
+        # discoverable plugins/auth-providers. This catches the case where
+        # pyinstaller collected the source but didn't preserve entry-point
+        # metadata, which would otherwise produce a binary that runs but
+        # has no functionality. (See CaddyGlow/ccproxy-api#75.)
+        if [ -n "$EXTRA_SMOKE_COMMAND" ] && echo "$EXTRA_SMOKE_COMMAND" | grep -qE '(plugins|auth)\s+(list|providers)'; then
+          OUT=$("$BINARY_PATH" $EXTRA_SMOKE_COMMAND 2>&1 || true)
+          if echo "$OUT" | grep -qiE 'no plugins found|no oauth providers found'; then
+            echo "::error::Smoke check failed: binary reports no plugins/providers."
+            echo "$OUT"
+            exit 1
+          fi
         fi
 
     - name: Package (Windows)
